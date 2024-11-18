@@ -10,11 +10,13 @@ async function getJobListings(li_at, searchTerm, location) {
   let allJobs = [];
   let currentPage = 1;
 
+  console.log("[INFO] Iniciando o navegador do Puppeteer...");
+
   const browser = await puppeteer.launch({
     executablePath:
       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
 
   const page = await browser.newPage();
@@ -28,11 +30,17 @@ async function getJobListings(li_at, searchTerm, location) {
   console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
 
   // Define o cookie `li_at` com o valor fornecido
-  await page.setCookie({
-    name: "li_at",
-    value: li_at,
-    domain: ".linkedin.com",
-  });
+  try {
+    await page.setCookie({
+      name: "li_at",
+      value: li_at,
+      domain: ".linkedin.com",
+    });
+    console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
+  } catch (error) {
+    console.error("[ERROR] Falha ao definir o cookie 'li_at':", error);
+    throw error;
+  }
 
   // Define o User-Agent para simular um navegador comum
   await page.setUserAgent(
@@ -41,7 +49,9 @@ async function getJobListings(li_at, searchTerm, location) {
 
   try {
     // Acessa a URL inicial para obter informações gerais, como total de páginas
+    console.log("[INFO] Navegando até a página inicial de busca...");
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    console.log("[INFO] Página de busca acessada com sucesso.");
 
     // Extrair o número total de páginas de resultados
     let totalPages = 1;
@@ -50,11 +60,10 @@ async function getJobListings(li_at, searchTerm, location) {
         ".artdeco-pagination__pages li:last-child button",
         (el) => parseInt(el.innerText.trim())
       );
+      console.info(`[INFO] Número total de páginas: ${totalPages}`);
     } catch (error) {
       console.warn("[WARN] Não foi possível obter o número total de páginas, continuando com uma página.");
     }
-
-    console.info(`[INFO] Número total de páginas: ${totalPages}`);
 
     // Iterar sobre cada página de 1 até o total de páginas
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
@@ -63,6 +72,7 @@ async function getJobListings(li_at, searchTerm, location) {
       // Navegar para a página específica
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
       await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 60000 });
+      console.info(`[INFO] Página ${currentPage} acessada com sucesso.`);
 
       // Captura os dados das vagas na página atual
       const jobsResult = await page.evaluate(() => {
@@ -95,6 +105,8 @@ async function getJobListings(li_at, searchTerm, location) {
         });
       });
 
+      console.info(`[INFO] Número de vagas coletadas na página ${currentPage}: ${jobsResult.length}`);
+
       // Adiciona os resultados ao array geral, removendo duplicados com base no ID do link
       jobsResult.forEach((job) => {
         if (job.link) {
@@ -113,8 +125,10 @@ async function getJobListings(li_at, searchTerm, location) {
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
   } catch (error) {
-    console.error("[ERROR] Erro ao carregar a página inicial:", error);
+    console.error("[ERROR] Erro durante o processo de scraping:", error);
+    throw error; // Repassa o erro para que a resposta da API seja correta
   } finally {
+    console.log("[INFO] Fechando o navegador do Puppeteer...");
     await browser.close();
   }
 
