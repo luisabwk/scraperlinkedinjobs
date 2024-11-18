@@ -102,7 +102,7 @@ async function getJobListings(page, searchTerm, location) {
     // Enviar todos os resultados ao webhook em um único pacote
     console.log("[INFO] Enviando dados para o webhook...");
     await axios
-      .post("https://hook.us1.make.com/agmroyiby7p6womm81ud868tfntxb03c", { jobs: allJobs })
+      .post("WEBHOOK AQUI", { jobs: allJobs })
       .then((response) => {
         console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
       })
