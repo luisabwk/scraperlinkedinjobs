@@ -59,24 +59,34 @@ async function getJobListings(li_at, searchTerm, location) {
     try {
       // Acessa a URL inicial para obter informações gerais, como total de páginas
       console.log("[INFO] Navegando até a página inicial de busca...");
-      await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 60000 });
 
-      // Verificar se a página pede login
+      // Verificar se fomos redirecionados para uma página de login
       if (await page.$("input#session_key")) {
         throw new Error("Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
       }
       console.log("[INFO] Página de busca acessada com sucesso.");
 
-      // Extrair o número total de páginas de resultados
+      // Tentativa de extrair o número total de páginas
       let totalPages = 1;
       try {
+        await page.waitForSelector(".artdeco-pagination__pages", { timeout: 10000 });
         totalPages = await page.$eval(
           ".artdeco-pagination__pages li:last-child button",
           (el) => parseInt(el.innerText.trim())
         );
         console.info(`[INFO] Número total de páginas: ${totalPages}`);
       } catch (error) {
-        console.warn("[WARN] Não foi possível obter o número total de páginas, continuando com uma página.");
+        console.warn("[WARN] Não foi possível obter o número total de páginas, tentando método alternativo...");
+
+        // Método alternativo: verificar se há mais de uma página pela presença do botão "Próximo"
+        const hasNextPage = await page.$(".artdeco-pagination__button--next");
+        if (hasNextPage) {
+          totalPages = 2; // Se houver um botão "Próximo", pelo menos há mais de uma página.
+          console.info("[INFO] Número de páginas ajustado para pelo menos 2, com base no botão de navegação.");
+        } else {
+          console.warn("[WARN] Não foi encontrado o botão de navegação 'Próximo', continuando com uma página.");
+        }
       }
 
       // Iterar sobre cada página de 1 até o total de páginas
@@ -86,7 +96,7 @@ async function getJobListings(li_at, searchTerm, location) {
         // Navegar para a página específica
         const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
         try {
-          await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 60000 });
+          await page.goto(pageURL, { waitUntil: "networkidle2", timeout: 60000 });
           console.info(`[INFO] Página ${currentPage} acessada com sucesso.`);
         } catch (error) {
           console.error(`[ERROR] Erro ao acessar a página ${currentPage}:`, error);
