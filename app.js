@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json());
 
 // Função para obter as vagas
-async function getJobListings(li_at, searchTerm, location) {
+async function getJobListings(li_at, searchTerm, location, maxJobs) {
   let allJobs = [];
   let currentPage = 1;
 
@@ -29,6 +29,10 @@ async function getJobListings(li_at, searchTerm, location) {
 
     const page = await browser.newPage();
     console.log("[INFO] Navegador iniciado com sucesso.");
+
+    // Aumentar os tempos de timeout para reduzir o número de falhas devido ao tempo limite
+    await page.setDefaultNavigationTimeout(120000); // 2 minutos
+    await page.setDefaultTimeout(120000); // 2 minutos
 
     const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
       searchTerm
@@ -59,7 +63,7 @@ async function getJobListings(li_at, searchTerm, location) {
     try {
       // Acessa a URL inicial para obter informações gerais, como total de páginas
       console.log("[INFO] Navegando até a página inicial de busca...");
-      await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 60000 });
+      await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 120000 });
 
       // Verificar se fomos redirecionados para uma página de login
       if (await page.$("input#session_key")) {
@@ -70,7 +74,7 @@ async function getJobListings(li_at, searchTerm, location) {
       // Tentativa de extrair o número total de páginas
       let totalPages = 1;
       try {
-        await page.waitForSelector(".artdeco-pagination__pages", { timeout: 10000 });
+        await page.waitForSelector(".artdeco-pagination__pages", { timeout: 20000 });
         totalPages = await page.$eval(
           ".artdeco-pagination__pages li:last-child button",
           (el) => parseInt(el.innerText.trim())
@@ -96,7 +100,7 @@ async function getJobListings(li_at, searchTerm, location) {
         // Navegar para a página específica
         const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
         try {
-          await page.goto(pageURL, { waitUntil: "networkidle2", timeout: 60000 });
+          await page.goto(pageURL, { waitUntil: "networkidle2", timeout: 120000 });
           console.info(`[INFO] Página ${currentPage} acessada com sucesso.`);
         } catch (error) {
           console.error(`[ERROR] Erro ao acessar a página ${currentPage}:`, error);
@@ -148,6 +152,12 @@ async function getJobListings(li_at, searchTerm, location) {
               }
             }
           });
+
+          // Verificar se já coletamos o número máximo de vagas solicitado
+          if (allJobs.length >= maxJobs) {
+            console.log(`[INFO] Número máximo de vagas (${maxJobs}) alcançado.`);
+            break;
+          }
         } catch (error) {
           console.error(`[ERROR] Erro ao coletar dados da página ${currentPage}:`, error);
         }
@@ -170,19 +180,21 @@ async function getJobListings(li_at, searchTerm, location) {
     }
   }
 
-  return allJobs;
+  return allJobs.slice(0, maxJobs); // Retorna apenas o número máximo de vagas solicitado
 }
 
 // Endpoint da API para scraping
 app.post("/scrape-jobs", async (req, res) => {
-  const { li_at, searchTerm, location, webhook } = req.body;
+  const { li_at, searchTerm, location, webhook, maxJobs } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
 
+  const maxJobsCount = maxJobs || 50; // Define um limite padrão de 50 vagas, caso não seja especificado
+
   try {
-    const jobs = await getJobListings(li_at, searchTerm, location);
+    const jobs = await getJobListings(li_at, searchTerm, location, maxJobsCount);
 
     // Enviar o resultado ao webhook, caso tenha sido fornecido
     if (webhook) {
