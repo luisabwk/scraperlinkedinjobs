@@ -1,0 +1,14 @@
+{
+  "name": "linkedin-scraper-api",
+  "version": "1.0.0",
+  "description": "API para scrape de vagas do LinkedIn usando Express e Puppeteer.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "puppeteer": "^13.0.0",
+    "axios": "^0.24.0"
+  }
+}
