@@ -1,42 +1,49 @@
 FROM node:16-slim
 
-# Instala dependências essenciais para o Chromium
+# Instala dependências essenciais para o Chromium e outras bibliotecas necessárias
 RUN apt-get update && apt-get install -y \
   wget \
   curl \
   gnupg \
-  libnss3 \
+  ca-certificates \
+  fonts-liberation \
+  libappindicator3-1 \
   libatk-bridge2.0-0 \
+  libatk1.0-0 \
+  libcups2 \
+  libdbus-glib-1-2 \
+  libgbm1 \
+  libgdk-pixbuf2.0-0 \
+  libgtk-3-0 \
+  libnspr4 \
+  libnss3 \
+  lsb-release \
+  xdg-utils \
   libx11-xcb1 \
   libxcomposite1 \
   libxcursor1 \
   libxdamage1 \
   libxrandr2 \
-  libgbm1 \
-  libasound2 \
-  libpangocairo-1.0-0 \
-  libpango-1.0-0 \
-  libcups2 \
-  libatk1.0-0 \
-  libgdk-pixbuf2.0-0 \
-  libgtk-3-0 \
   libxss1 \
-  libdrm2
+  libasound2 \
+  libdrm2 \
+  libgbm-dev \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Cria o diretório de trabalho
+# Define diretório de trabalho
 WORKDIR /app
 
-# Copia os arquivos do projeto
+# Copia arquivos do projeto
 COPY package*.json ./
 
 # Instala dependências do projeto
 RUN npm install
 
-# Copia o restante dos arquivos do projeto
+# Copia os arquivos restantes do projeto
 COPY . .
 
-# Expõe a porta (não precisa definir uma porta específica no Railway)
+# Expõe a porta para o aplicativo
 EXPOSE 3000
 
-# Comando para iniciar o aplicativo
+# Comando para iniciar o servidor
 CMD ["npm", "start"]
