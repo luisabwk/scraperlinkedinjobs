@@ -31,8 +31,8 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
     console.log("[INFO] Navegador iniciado com sucesso.");
 
     // Aumentar os tempos de timeout para reduzir o número de falhas devido ao tempo limite
-    await page.setDefaultNavigationTimeout(120000); // 2 minutos
-    await page.setDefaultTimeout(120000); // 2 minutos
+    await page.setDefaultNavigationTimeout(180000); // 3 minutos
+    await page.setDefaultTimeout(180000); // 3 minutos
 
     const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
       searchTerm
@@ -61,9 +61,25 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
     );
 
     try {
+      // Função para tentar navegar até uma página com retries
+      async function navigateWithRetries(url, retries = 3) {
+        for (let i = 0; i < retries; i++) {
+          try {
+            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120000 });
+            console.info(`[INFO] Página acessada com sucesso: ${url}`);
+            return;
+          } catch (error) {
+            console.error(`[ERROR] Erro ao acessar a página, tentativa ${i + 1} de ${retries}:`, error);
+            if (i === retries - 1) {
+              throw error;
+            }
+          }
+        }
+      }
+
       // Acessa a URL inicial para obter informações gerais, como total de páginas
       console.log("[INFO] Navegando até a página inicial de busca...");
-      await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 120000 });
+      await navigateWithRetries(baseUrl);
 
       // Verificar se fomos redirecionados para uma página de login
       if (await page.$("input#session_key")) {
@@ -97,13 +113,12 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
       for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
         console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
-        // Navegar para a página específica
+        // Navegar para a página específica com retries
         const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
         try {
-          await page.goto(pageURL, { waitUntil: "networkidle2", timeout: 120000 });
-          console.info(`[INFO] Página ${currentPage} acessada com sucesso.`);
+          await navigateWithRetries(pageURL);
         } catch (error) {
-          console.error(`[ERROR] Erro ao acessar a página ${currentPage}:`, error);
+          console.error(`[ERROR] Erro ao acessar a página ${currentPage} após múltiplas tentativas:`, error);
           continue; // Pula esta página e tenta a próxima
         }
 
