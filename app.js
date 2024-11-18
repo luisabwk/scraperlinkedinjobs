@@ -22,7 +22,8 @@ async function getJobListings(li_at, searchTerm, location) {
         "--disable-dev-shm-usage",
         "--disable-extensions",
         "--disable-gpu",
-        "--disable-software-rasterizer",
+        "--single-process", // Evita multiprocessamento, útil em ambientes limitados
+        "--no-zygote",      // Desativa processos zygote, reduzindo o consumo de recursos
       ],
     });
 
@@ -59,6 +60,11 @@ async function getJobListings(li_at, searchTerm, location) {
       // Acessa a URL inicial para obter informações gerais, como total de páginas
       console.log("[INFO] Navegando até a página inicial de busca...");
       await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+      // Verificar se a página pede login
+      if (await page.$("input#session_key")) {
+        throw new Error("Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
+      }
       console.log("[INFO] Página de busca acessada com sucesso.");
 
       // Extrair o número total de páginas de resultados
