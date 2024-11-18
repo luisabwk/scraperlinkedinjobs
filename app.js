@@ -12,124 +12,146 @@ async function getJobListings(li_at, searchTerm, location) {
 
   console.log("[INFO] Iniciando o navegador do Puppeteer...");
 
-  const browser = await puppeteer.launch({
-    executablePath:
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-  });
-
-  const page = await browser.newPage();
-
-  const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
-    searchTerm
-  )}&location=${encodeURIComponent(
-    location
-  )}&geoId=106057199&f_TPR=r86400`;
-
-  console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
-
-  // Define o cookie `li_at` com o valor fornecido
+  let browser;
   try {
-    await page.setCookie({
-      name: "li_at",
-      value: li_at,
-      domain: ".linkedin.com",
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-extensions",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+      ],
     });
-    console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
-  } catch (error) {
-    console.error("[ERROR] Falha ao definir o cookie 'li_at':", error);
-    throw error;
-  }
 
-  // Define o User-Agent para simular um navegador comum
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
-  );
+    const page = await browser.newPage();
+    console.log("[INFO] Navegador iniciado com sucesso.");
 
-  try {
-    // Acessa a URL inicial para obter informações gerais, como total de páginas
-    console.log("[INFO] Navegando até a página inicial de busca...");
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-    console.log("[INFO] Página de busca acessada com sucesso.");
+    const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
+      searchTerm
+    )}&location=${encodeURIComponent(
+      location
+    )}&geoId=106057199&f_TPR=r86400`;
 
-    // Extrair o número total de páginas de resultados
-    let totalPages = 1;
+    console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
+
+    // Define o cookie `li_at` com o valor fornecido
     try {
-      totalPages = await page.$eval(
-        ".artdeco-pagination__pages li:last-child button",
-        (el) => parseInt(el.innerText.trim())
-      );
-      console.info(`[INFO] Número total de páginas: ${totalPages}`);
+      await page.setCookie({
+        name: "li_at",
+        value: li_at,
+        domain: ".linkedin.com",
+      });
+      console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
     } catch (error) {
-      console.warn("[WARN] Não foi possível obter o número total de páginas, continuando com uma página.");
+      console.error("[ERROR] Falha ao definir o cookie 'li_at':", error);
+      throw new Error("Erro ao definir o cookie 'li_at'.");
     }
 
-    // Iterar sobre cada página de 1 até o total de páginas
-    for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
-      console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
+    // Define o User-Agent para simular um navegador comum
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
+    );
 
-      // Navegar para a página específica
-      const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
-      await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 60000 });
-      console.info(`[INFO] Página ${currentPage} acessada com sucesso.`);
+    try {
+      // Acessa a URL inicial para obter informações gerais, como total de páginas
+      console.log("[INFO] Navegando até a página inicial de busca...");
+      await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+      console.log("[INFO] Página de busca acessada com sucesso.");
 
-      // Captura os dados das vagas na página atual
-      const jobsResult = await page.evaluate(() => {
-        const jobElements = Array.from(
-          document.querySelectorAll(".jobs-search-results__list-item")
+      // Extrair o número total de páginas de resultados
+      let totalPages = 1;
+      try {
+        totalPages = await page.$eval(
+          ".artdeco-pagination__pages li:last-child button",
+          (el) => parseInt(el.innerText.trim())
         );
+        console.info(`[INFO] Número total de páginas: ${totalPages}`);
+      } catch (error) {
+        console.warn("[WARN] Não foi possível obter o número total de páginas, continuando com uma página.");
+      }
 
-        return jobElements.map((job) => {
-          const title = job
-            .querySelector(".job-card-list__title")
-            ?.innerText.trim()
-            .replace(/\n/g, ' '); // Remover quebras de linha
+      // Iterar sobre cada página de 1 até o total de páginas
+      for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
+        console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
-          const company = job
-            .querySelector(".job-card-container__primary-description")
-            ?.innerText.trim();
-
-          const location = job
-            .querySelector(".job-card-container__metadata-item")
-            ?.innerText.trim();
-
-          const link = job.querySelector("a")?.href;
-
-          return {
-            vaga: title || "",
-            empresa: company || "",
-            local: location || "",
-            link: link || "",
-          };
-        });
-      });
-
-      console.info(`[INFO] Número de vagas coletadas na página ${currentPage}: ${jobsResult.length}`);
-
-      // Adiciona os resultados ao array geral, removendo duplicados com base no ID do link
-      jobsResult.forEach((job) => {
-        if (job.link) {
-          const jobIdMatch = job.link.match(/(\d+)/);
-          if (jobIdMatch) {
-            const jobId = jobIdMatch[0];
-            if (!allJobs.some((j) => j.link.includes(jobId))) {
-              allJobs.push(job);
-            }
-          }
+        // Navegar para a página específica
+        const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
+        try {
+          await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 60000 });
+          console.info(`[INFO] Página ${currentPage} acessada com sucesso.`);
+        } catch (error) {
+          console.error(`[ERROR] Erro ao acessar a página ${currentPage}:`, error);
+          continue; // Pula esta página e tenta a próxima
         }
-      });
 
-      console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
+        // Captura os dados das vagas na página atual
+        try {
+          const jobsResult = await page.evaluate(() => {
+            const jobElements = Array.from(
+              document.querySelectorAll(".jobs-search-results__list-item")
+            );
+
+            return jobElements.map((job) => {
+              const title = job
+                .querySelector(".job-card-list__title")
+                ?.innerText.trim()
+                .replace(/\n/g, ' '); // Remover quebras de linha
+
+              const company = job
+                .querySelector(".job-card-container__primary-description")
+                ?.innerText.trim();
+
+              const location = job
+                .querySelector(".job-card-container__metadata-item")
+                ?.innerText.trim();
+
+              const link = job.querySelector("a")?.href;
+
+              return {
+                vaga: title || "",
+                empresa: company || "",
+                local: location || "",
+                link: link || "",
+              };
+            });
+          });
+          console.info(`[INFO] Número de vagas coletadas na página ${currentPage}: ${jobsResult.length}`);
+
+          // Adiciona os resultados ao array geral, removendo duplicados com base no ID do link
+          jobsResult.forEach((job) => {
+            if (job.link) {
+              const jobIdMatch = job.link.match(/(\d+)/);
+              if (jobIdMatch) {
+                const jobId = jobIdMatch[0];
+                if (!allJobs.some((j) => j.link.includes(jobId))) {
+                  allJobs.push(job);
+                }
+              }
+            }
+          });
+        } catch (error) {
+          console.error(`[ERROR] Erro ao coletar dados da página ${currentPage}:`, error);
+        }
+
+        console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
+      }
+
+      console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
+    } catch (error) {
+      console.error("[ERROR] Erro durante o processo de scraping:", error);
+      throw new Error("Erro durante o processo de scraping.");
     }
-
-    console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
   } catch (error) {
-    console.error("[ERROR] Erro durante o processo de scraping:", error);
-    throw error; // Repassa o erro para que a resposta da API seja correta
+    console.error("[ERROR] Erro ao iniciar o Puppeteer ou configurar o navegador:", error);
+    throw new Error("Erro ao iniciar o Puppeteer ou configurar o navegador.");
   } finally {
-    console.log("[INFO] Fechando o navegador do Puppeteer...");
-    await browser.close();
+    if (browser) {
+      console.log("[INFO] Fechando o navegador do Puppeteer...");
+      await browser.close();
+    }
   }
 
   return allJobs;
@@ -165,7 +187,8 @@ app.post("/scrape-jobs", async (req, res) => {
 
     res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
   } catch (error) {
-    res.status(500).send({ error: "Erro ao realizar o scraping." });
+    console.error("[ERROR] Falha durante a requisição:", error.message);
+    res.status(500).send({ error: error.message });
   }
 });
 
