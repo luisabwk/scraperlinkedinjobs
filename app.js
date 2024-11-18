@@ -123,7 +123,7 @@ async function getJobListings(li_at, searchTerm, location) {
 
 // Endpoint da API para scraping
 app.post("/scrape-jobs", async (req, res) => {
-  const { li_at, searchTerm, location } = req.body;
+  const { li_at, searchTerm, location, webhook } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
@@ -132,20 +132,22 @@ app.post("/scrape-jobs", async (req, res) => {
   try {
     const jobs = await getJobListings(li_at, searchTerm, location);
 
-    // Enviar o resultado ao webhook
-    console.log("[INFO] Enviando dados para o webhook...");
-    await axios
-      .post("https://hook.us1.make.com/agmroyiby7p6womm81ud868tfntxb03c", { jobs })
-      .then((response) => {
-        console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
-      })
-      .catch((error) => {
-        console.error(
-          "[ERROR] Erro ao acionar o webhook:",
-          error.response?.status,
-          error.response?.data
-        );
-      });
+    // Enviar o resultado ao webhook, caso tenha sido fornecido
+    if (webhook) {
+      console.log("[INFO] Enviando dados para o webhook...");
+      await axios
+        .post(webhook, { jobs })
+        .then((response) => {
+          console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
+        })
+        .catch((error) => {
+          console.error(
+            "[ERROR] Erro ao acionar o webhook:",
+            error.response?.status,
+            error.response?.data
+          );
+        });
+    }
 
     res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
   } catch (error) {
