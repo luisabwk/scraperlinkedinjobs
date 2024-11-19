@@ -242,10 +242,10 @@ async function getJobDetails(li_at, jobLink) {
     // Extrai os detalhes da vaga
     jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".t-24")?.innerText.trim() || "";
-      const company = document.querySelector(".job-card-container__company-name")?.innerText.trim() || "";
-      const location = document.querySelector(".tvm__text.tvm__text--low-emphasis")?.innerText.trim() || "";
+      const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
+      const location = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
       const jobType = document.querySelector(".job-details-jobs-unified-top-card__job-insight.job-details-jobs-unified-top-card__job-insight--highlight")?.innerText.trim() || "";
-      const jobDescription = document.querySelector(".jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() ||
+      const jobDescription = document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() ||
                             document.querySelector("#job-details")?.innerText.trim() || "";
       const applyUrl = document.querySelector(".jobs-apply-button.artdeco-button.artdeco-button--3.artdeco-button--primary.ember-view")?.href || "";
 
