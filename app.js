@@ -131,19 +131,20 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
 
             return jobElements.map((job) => {
               const title = job
-                .querySelector(".t-24.job-details-jobs-unified-top-card__job-title")
+                .querySelector(".t-24")
                 ?.innerText.trim()
                 .replace(/\n/g, ' '); // Remover quebras de linha
 
               const company = job
-                .querySelector(".job-details-jobs-unified-top-card__company-name")
+                .querySelector(".job-card-container__company-name")
                 ?.innerText.trim();
 
               const location = job
-                .querySelector("tvm__text tvm__text--low-emphasis")
+                .querySelector("[class*='tvm__text--low-emphasis']")
                 ?.innerText.trim();
 
-              const link = job.querySelector("artdeco-button__text")?.href;
+              const linkElement = job.querySelector("a[data-control-name='job_card_container']");
+              const link = linkElement ? linkElement.href : "";
 
               return {
                 vaga: title || "",
@@ -240,12 +241,12 @@ async function getJobDetails(li_at, jobLink) {
 
     // Extrai os detalhes da vaga
     jobDetails = await page.evaluate(() => {
-      const title = document.querySelector(".t-24.job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
-      const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
-      const location = document.querySelector("tvm__text tvm__text--low-emphasis")?.innerText.trim() || "";
-      const jobType = document.querySelector("ivm-view-attr__img-wrapper")?.innerText.trim() || "";
-      const jobDescription = document.querySelector("jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() || "";
-      const applyUrl = document.querySelector("artdeco-button__text")?.href || "";
+      const title = document.querySelector(".t-24")?.innerText.trim() || "";
+      const company = document.querySelector(".job-card-container__company-name")?.innerText.trim() || "";
+      const location = document.querySelector("[class*='tvm__text--low-emphasis']")?.innerText.trim() || "";
+      const jobType = document.querySelector(".ivm-view-attr__img-wrapper")?.innerText.trim() || "";
+      const jobDescription = document.querySelector(".jobs-description-content__text")?.innerText.trim() || "";
+      const applyUrl = document.querySelector("a[data-control-name='jobdetails_topcard_inapply']")?.href || "";
 
       return {
         vaga: title,
