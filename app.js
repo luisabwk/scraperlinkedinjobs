@@ -241,15 +241,21 @@ async function getJobDetails(li_at, jobLink) {
     // Extrai os detalhes da vaga
     jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".topcard__title")?.innerText.trim() || "";
-      const company = document.querySelector(".topcard__org-name-link")?.innerText.trim() || "";
+      const company = document.querySelector(".topcard__org-name-link, .topcard__flavor--black-link")?.innerText.trim() || "";
       const location = document.querySelector(".topcard__flavor--bullet")?.innerText.trim() || "";
-      const description = document.querySelector(".show-more-less-html__markup")?.innerText.trim() || "";
+      const typeAndLevelText = document.querySelector(".topcard__flavor:nth-child(3)")?.innerText.trim() || "";
+      const [jobType, jobLevel] = typeAndLevelText.split(' · ');
+      const jobDescription = document.querySelector(".show-more-less-html__markup")?.innerText.trim() || "";
+      const applyUrl = document.querySelector(".topcard__actions a")?.href || "";
 
       return {
         vaga: title,
         empresa: company,
         local: location,
-        descricao: description,
+        tipo: jobType || "",
+        nivel: jobLevel || "",
+        descricao: jobDescription,
+        url_candidatura: applyUrl
       };
     });
     console.log(`[INFO] Detalhes da vaga obtidos com sucesso: ${jobLink}`);
