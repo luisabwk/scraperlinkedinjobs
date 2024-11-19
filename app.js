@@ -258,11 +258,16 @@ async function getJobDetails(li_at, jobLink) {
         cargaHoraria = parts[1] || "";
         nivelExperiencia = parts[2] || "";
       }
-      const jobDescription = document.querySelector("#job-details")?.innerText.trim() ||
-                            document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() ||
-                            document.querySelector(".jobs-description__content")?.innerText.trim() ||
-                            document.querySelector(".jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() ||
-                            "Descrição não encontrada";
+      const descriptionElement = document.querySelector(".jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch");
+      let jobDescription = "Descrição não encontrada";
+      if (descriptionElement) {
+        const h2Element = descriptionElement.querySelector("h2");
+        if (h2Element) {
+          h2Element.remove();
+        }
+        jobDescription = descriptionElement.innerText.trim();
+      }
+
       let applyUrl = document.querySelector(".jobs-apply-button--top-card a")?.href || "";
       if (!applyUrl) {
         const applyButton = document.querySelector("button.jobs-apply-button--top-card");
