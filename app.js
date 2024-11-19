@@ -140,10 +140,10 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
                 ?.innerText.trim();
 
               const location = job
-                .querySelector(".tvm__text.tvm__text--low-emphasis")
+                .querySelector("tvm__text tvm__text--low-emphasis")
                 ?.innerText.trim();
 
-              const link = job.querySelector("a.artdeco-button__text")?.href;
+              const link = job.querySelector("artdeco-button__text")?.href;
 
               return {
                 vaga: title || "",
@@ -242,10 +242,10 @@ async function getJobDetails(li_at, jobLink) {
     jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".t-24.job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
-      const location = document.querySelector(".tvm__text.tvm__text--low-emphasis")?.innerText.trim() || "";
-      const jobType = document.querySelector(".ivm-view-attr__img-wrapper")?.innerText.trim() || "";
-      const jobDescription = document.querySelector(".mt4")?.innerText.trim() || "";
-      const applyUrl = document.querySelector("a.artdeco-button__text")?.href || "";
+      const location = document.querySelector("tvm__text tvm__text--low-emphasis")?.innerText.trim() || "";
+      const jobType = document.querySelector("ivm-view-attr__img-wrapper")?.innerText.trim() || "";
+      const jobDescription = document.querySelector("jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() || "";
+      const applyUrl = document.querySelector("artdeco-button__text")?.href || "";
 
       return {
         vaga: title,
