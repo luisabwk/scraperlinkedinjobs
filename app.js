@@ -62,10 +62,10 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
 
     try {
       // Função para tentar navegar até uma página com retries
-      async function navigateWithRetries(url, retries = 3) {
+      async function navigateWithRetries(url, retries = 5) {
         for (let i = 0; i < retries; i++) {
           try {
-            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120000 });
+            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
             console.info(`[INFO] Página acessada com sucesso: ${url}`);
             return;
           } catch (error) {
