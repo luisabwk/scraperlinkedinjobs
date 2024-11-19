@@ -149,7 +149,7 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
               return {
                 vaga: title || "",
                 empresa: company || "",
-                local: location || "",
+                local: location ? location.split(' · ')[0] : "", // Regex para extrair apenas cidade e país
                 link: link || "",
               };
             });
@@ -245,9 +245,9 @@ async function getJobDetails(li_at, jobLink) {
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
       const location = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
       const jobType = document.querySelector(".job-details-jobs-unified-top-card__job-insight.job-details-jobs-unified-top-card__job-insight--highlight")?.innerText.trim() || "";
-      const jobDescription = document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() ||
-                            document.querySelector("#job-details")?.innerText.trim() || "";
-      const applyUrl = document.querySelector(".jobs-apply-button.artdeco-button.artdeco-button--3.artdeco-button--primary.ember-view")?.href || "";
+      const jobDescription = document.querySelector("#job-details")?.innerText.trim() ||
+                            document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() || "";
+      const applyUrl = document.querySelector(".jobs-apply-button--top-card")?.href || "";
 
       return {
         vaga: title,
