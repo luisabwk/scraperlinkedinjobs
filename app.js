@@ -260,7 +260,9 @@ async function getJobDetails(li_at, jobLink) {
       }
       const jobDescription = document.querySelector("#job-details")?.innerText.trim() ||
                             document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() ||
-                            document.querySelector(".jobs-description__content")?.innerText.trim() || "Descrição não encontrada";
+                            document.querySelector(".jobs-description__content")?.innerText.trim() ||
+                            document.querySelector(".jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() ||
+                            "Descrição não encontrada";
       let applyUrl = document.querySelector(".jobs-apply-button--top-card a")?.href || "";
       if (!applyUrl) {
         const applyButton = document.querySelector("button.jobs-apply-button--top-card");
