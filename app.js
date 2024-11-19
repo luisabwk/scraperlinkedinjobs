@@ -243,22 +243,44 @@ async function getJobDetails(li_at, jobLink) {
     jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".t-24")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
-      const location = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
+      let location = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
+      if (location) {
+        const match = location.match(/^([^·]*)/);
+        location = match ? match[1].trim() : location;
+      }
       const jobType = document.querySelector(".job-details-jobs-unified-top-card__job-insight.job-details-jobs-unified-top-card__job-insight--highlight")?.innerText.trim() || "";
+      let formatoTrabalho = "";
+      let cargaHoraria = "";
+      let nivelExperiencia = "";
+      if (jobType) {
+        const parts = jobType.split(/\s{2,}/); // Dividir por dois ou mais espaços
+        formatoTrabalho = parts[0] || "";
+        cargaHoraria = parts[1] || "";
+        nivelExperiencia = parts[2] || "";
+      }
       const jobDescription = document.querySelector("#job-details")?.innerText.trim() ||
-                            document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() || "";
-      const applyUrl = document.querySelector(".jobs-apply-button--top-card")?.href || "";
+                            document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() ||
+                            document.querySelector(".jobs-description__content")?.innerText.trim() || "Descrição não encontrada";
+      let applyUrl = document.querySelector(".jobs-apply-button--top-card a")?.href || "";
+      if (!applyUrl) {
+        const applyButton = document.querySelector("a[data-control-name='jobdetails_topcard_inapply']");
+        applyUrl = applyButton ? applyButton.href : "URL de candidatura não encontrada";
+      }
 
       return {
         vaga: title,
         empresa: company,
         local: location,
-        tipo: jobType,
+        formato_trabalho: formatoTrabalho,
+        carga_horaria: cargaHoraria,
+        nivel_experiencia: nivelExperiencia,
         descricao: jobDescription,
         url_candidatura: applyUrl
       };
     });
     console.log(`[INFO] Detalhes da vaga obtidos com sucesso: ${jobLink}`);
+    console.log("[DEBUG] Detalhes da Vaga:", jobDetails);
+
   } catch (error) {
     console.error(`[ERROR] Erro ao obter detalhes da vaga ${jobLink}:`, error);
     throw new Error(`Erro ao obter detalhes da vaga: ${jobLink}`);
