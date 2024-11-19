@@ -126,24 +126,24 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
         try {
           const jobsResult = await page.evaluate(() => {
             const jobElements = Array.from(
-              document.querySelectorAll(".jobs-search-results__list-item")
+              document.querySelectorAll(".job-card-container")
             );
 
             return jobElements.map((job) => {
               const title = job
-                .querySelector(".job-card-list__title")
+                .querySelector(".t-24.job-details-jobs-unified-top-card__job-title")
                 ?.innerText.trim()
                 .replace(/\n/g, ' '); // Remover quebras de linha
 
               const company = job
-                .querySelector(".job-card-container__primary-description")
+                .querySelector(".job-details-jobs-unified-top-card__company-name")
                 ?.innerText.trim();
 
               const location = job
-                .querySelector(".job-card-container__metadata-item")
+                .querySelector(".tvm__text.tvm__text--low-emphasis")
                 ?.innerText.trim();
 
-              const link = job.querySelector("a")?.href;
+              const link = job.querySelector("a.artdeco-button__text")?.href;
 
               return {
                 vaga: title || "",
@@ -240,20 +240,18 @@ async function getJobDetails(li_at, jobLink) {
 
     // Extrai os detalhes da vaga
     jobDetails = await page.evaluate(() => {
-      const title = document.querySelector(".topcard__title")?.innerText.trim() || "";
-      const company = document.querySelector(".topcard__org-name-link, .topcard__flavor--black-link")?.innerText.trim() || "";
-      const location = document.querySelector(".topcard__flavor--bullet")?.innerText.trim() || "";
-      const typeAndLevelText = document.querySelector(".topcard__flavor:nth-child(3)")?.innerText.trim() || "";
-      const [jobType, jobLevel] = typeAndLevelText.split(' · ');
-      const jobDescription = document.querySelector(".show-more-less-html__markup")?.innerText.trim() || "";
-      const applyUrl = document.querySelector(".topcard__actions a")?.href || "";
+      const title = document.querySelector(".t-24.job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
+      const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
+      const location = document.querySelector(".tvm__text.tvm__text--low-emphasis")?.innerText.trim() || "";
+      const jobType = document.querySelector(".ivm-view-attr__img-wrapper")?.innerText.trim() || "";
+      const jobDescription = document.querySelector(".mt4")?.innerText.trim() || "";
+      const applyUrl = document.querySelector("a.artdeco-button__text")?.href || "";
 
       return {
         vaga: title,
         empresa: company,
         local: location,
-        tipo: jobType || "",
-        nivel: jobLevel || "",
+        tipo: jobType,
         descricao: jobDescription,
         url_candidatura: applyUrl
       };
