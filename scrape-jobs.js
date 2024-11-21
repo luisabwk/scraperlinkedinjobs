@@ -1,9 +1,5 @@
-const express = require("express");
 const puppeteer = require("puppeteer");
 const axios = require("axios");
-
-const app = express();
-app.use(express.json());
 
 // Função para obter as vagas
 async function getJobListings(li_at, searchTerm, location, maxJobs) {
@@ -22,8 +18,8 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
         "--disable-dev-shm-usage",
         "--disable-extensions",
         "--disable-gpu",
-        "--single-process",
-        "--no-zygote",
+        "--single-process", // Evita multiprocessamento, útil em ambientes limitados
+        "--no-zygote",      // Desativa processos zygote, reduzindo o consumo de recursos
       ],
     });
 
@@ -83,9 +79,6 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
 
       // Verificar se fomos redirecionados para uma página de login
       if (await page.$("input#session_key")) {
-        const htmlContent = await page.content();
-        console.error("[ERROR] Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
-        console.log("[DEBUG] HTML da página de login:", htmlContent);
         throw new Error("Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
       }
       console.log("[INFO] Página de busca acessada com sucesso.");
@@ -105,7 +98,7 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
         // Método alternativo: verificar se há mais de uma página pela presença do botão "Próximo"
         const hasNextPage = await page.$(".artdeco-pagination__button--next");
         if (hasNextPage) {
-          totalPages = 2;
+          totalPages = 2; // Se houver um botão "Próximo", pelo menos há mais de uma página.
           console.info("[INFO] Número de páginas ajustado para pelo menos 2, com base no botão de navegação.");
         } else {
           console.warn("[WARN] Não foi encontrado o botão de navegação 'Próximo', continuando com uma página.");
@@ -116,12 +109,13 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
       for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
         console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
+        // Navegar para a página específica com retries
         const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
         try {
           await navigateWithRetries(pageURL);
         } catch (error) {
           console.error(`[ERROR] Erro ao acessar a página ${currentPage} após múltiplas tentativas:`, error);
-          continue; 
+          continue; // Pula esta página e tenta a próxima
         }
 
         // Captura os dados das vagas na página atual
@@ -131,15 +125,11 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
               document.querySelectorAll(".jobs-search-results__list-item")
             );
 
-            if (jobElements.length === 0) {
-              console.warn("[WARN] Nenhum elemento de vaga encontrado. Verifique o seletor.");
-            }
-
             return jobElements.map((job) => {
               const title = job
                 .querySelector(".job-card-list__title")
                 ?.innerText.trim()
-                .replace(/\n/g, ' '); 
+                .replace(/\n/g, ' '); // Remover quebras de linha
 
               const company = job
                 .querySelector(".job-card-container__primary-description")
@@ -159,15 +149,9 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
               };
             });
           });
-
-          if (jobsResult.length === 0) {
-            const htmlContent = await page.content();
-            console.error("[ERROR] Nenhuma vaga encontrada nesta página. Capturando HTML para debug.");
-            console.log("[DEBUG] HTML da página:", htmlContent);
-          }
-
           console.info(`[INFO] Número de vagas coletadas na página ${currentPage}: ${jobsResult.length}`);
 
+          // Adiciona os resultados ao array geral, removendo duplicados com base no ID do link
           jobsResult.forEach((job) => {
             if (job.link) {
               const jobIdMatch = job.link.match(/(\d+)/);
@@ -180,6 +164,7 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
             }
           });
 
+          // Verificar se já coletamos o número máximo de vagas solicitado
           if (allJobs.length >= maxJobs) {
             console.log(`[INFO] Número máximo de vagas (${maxJobs}) alcançado.`);
             break;
@@ -206,7 +191,9 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
     }
   }
 
-  return allJobs.slice(0, maxJobs);
+  return allJobs.slice(0, maxJobs); // Retorna apenas o número máximo de vagas solicitado
 }
 
-module.exports = getJobListings;
+module.exports = {
+  getJobListings,
+};
