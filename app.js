@@ -1,7 +1,6 @@
 const express = require("express");
 const { getJobListings } = require("./scrape-jobs");
 const { getJobDetails } = require("./jobdetails");
-const axios = require("axios");
 
 const app = express();
 app.use(express.json());
@@ -14,11 +13,12 @@ app.post("/scrape-jobs", async (req, res) => {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
 
-  const maxJobsCount = maxJobs || 50;
+  const maxJobsCount = maxJobs || 50; // Limite padrão de 50 vagas
 
   try {
     const jobs = await getJobListings(li_at, searchTerm, location, maxJobsCount);
 
+    // Enviar o resultado ao webhook, se fornecido
     if (webhook) {
       console.log("[INFO] Enviando dados para o webhook...");
       await axios
@@ -27,11 +27,7 @@ app.post("/scrape-jobs", async (req, res) => {
           console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
         })
         .catch((error) => {
-          console.error(
-            "[ERROR] Erro ao acionar o webhook:",
-            error.response?.status,
-            error.response?.data
-          );
+          console.error("[ERROR] Erro ao acionar o webhook:", error.response?.status, error.response?.data);
         });
     }
 
