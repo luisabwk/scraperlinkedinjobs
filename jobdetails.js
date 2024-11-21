@@ -53,30 +53,7 @@ async function getJobDetails(li_at, jobLink) {
       throw new Error("Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
     }
 
-    jobDetails.vaga = await page.$eval(
-      ".topcard__title",
-      (el) => el.innerText.trim()
-    );
-
-    jobDetails.empresa = await page.$eval(
-      ".topcard__flavor",
-      (el) => el.innerText.trim()
-    );
-
-    jobDetails.local = await page.$eval(
-      ".topcard__flavor--bullet",
-      (el) => el.innerText.trim()
-    );
-
-    const jobDescriptionElement = await page.$("#job-details, .mt4");
-    if (jobDescriptionElement) {
-      jobDetails.descricao = await page.evaluate(
-        (el) => el.innerText.trim(),
-        jobDescriptionElement
-      );
-    } else {
-      jobDetails.descricao = "Descrição não encontrada";
-    }
+    // Coleta os detalhes da vaga...
 
     console.log("[INFO] Detalhes da vaga obtidos com sucesso.");
   } catch (error) {
