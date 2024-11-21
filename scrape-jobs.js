@@ -1,5 +1,4 @@
 const puppeteer = require("puppeteer");
-const axios = require("axios");
 
 // Função para obter as vagas
 async function getJobListings(li_at, searchTerm, location, maxJobs) {
