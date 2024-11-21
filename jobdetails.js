@@ -40,7 +40,13 @@ async function getJobDetails(li_at, jobLink) {
     );
 
     console.log(`[INFO] Acessando o link da vaga: ${jobLink}`);
-    await page.goto(jobLink, { waitUntil: "networkidle2", timeout: 120000 });
+
+    try {
+      await page.goto(jobLink, { waitUntil: "domcontentloaded", timeout: 120000 });
+    } catch (initialError) {
+      console.warn("[WARN] Primeira tentativa de acesso falhou, tentando novamente...");
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 120000 });
+    }
 
     // Captura os detalhes da vaga
     const jobDetails = await page.evaluate(() => {
