@@ -5,9 +5,6 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-// Prefixo para a API
-const apiRouter = express.Router();
-
 // Função para obter as vagas
 async function getJobListings(li_at, searchTerm, location, maxJobs) {
   let allJobs = [];
@@ -25,23 +22,27 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
         "--disable-dev-shm-usage",
         "--disable-extensions",
         "--disable-gpu",
-        "--single-process",
-        "--no-zygote",
+        "--single-process", // Evita multiprocessamento, útil em ambientes limitados
+        "--no-zygote",      // Desativa processos zygote, reduzindo o consumo de recursos
       ],
     });
 
     const page = await browser.newPage();
     console.log("[INFO] Navegador iniciado com sucesso.");
 
-    await page.setDefaultNavigationTimeout(180000);
-    await page.setDefaultTimeout(180000);
+    // Aumentar os tempos de timeout para reduzir o número de falhas devido ao tempo limite
+    await page.setDefaultNavigationTimeout(180000); // 3 minutos
+    await page.setDefaultTimeout(180000); // 3 minutos
 
     const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
       searchTerm
-    )}&location=${encodeURIComponent(location)}&geoId=106057199&f_TPR=r86400`;
+    )}&location=${encodeURIComponent(
+      location
+    )}&geoId=106057199&f_TPR=r86400`;
 
     console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
 
+    // Define o cookie `li_at` com o valor fornecido
     try {
       await page.setCookie({
         name: "li_at",
@@ -54,11 +55,13 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
       throw new Error("Erro ao definir o cookie 'li_at'.");
     }
 
+    // Define o User-Agent para simular um navegador comum
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
     try {
+      // Função para tentar navegar até uma página com retries
       async function navigateWithRetries(url, retries = 5) {
         for (let i = 0; i < retries; i++) {
           try {
@@ -74,14 +77,17 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
         }
       }
 
+      // Acessa a URL inicial para obter informações gerais, como total de páginas
       console.log("[INFO] Navegando até a página inicial de busca...");
       await navigateWithRetries(baseUrl);
 
+      // Verificar se fomos redirecionados para uma página de login
       if (await page.$("input#session_key")) {
         throw new Error("Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
       }
       console.log("[INFO] Página de busca acessada com sucesso.");
 
+      // Tentativa de extrair o número total de páginas
       let totalPages = 1;
       try {
         await page.waitForSelector(".artdeco-pagination__pages", { timeout: 20000 });
@@ -93,26 +99,30 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
       } catch (error) {
         console.warn("[WARN] Não foi possível obter o número total de páginas, tentando método alternativo...");
 
+        // Método alternativo: verificar se há mais de uma página pela presença do botão "Próximo"
         const hasNextPage = await page.$(".artdeco-pagination__button--next");
         if (hasNextPage) {
-          totalPages = 2;
+          totalPages = 2; // Se houver um botão "Próximo", pelo menos há mais de uma página.
           console.info("[INFO] Número de páginas ajustado para pelo menos 2, com base no botão de navegação.");
         } else {
           console.warn("[WARN] Não foi encontrado o botão de navegação 'Próximo', continuando com uma página.");
         }
       }
 
+      // Iterar sobre cada página de 1 até o total de páginas
       for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
         console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
+        // Navegar para a página específica com retries
         const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
         try {
           await navigateWithRetries(pageURL);
         } catch (error) {
           console.error(`[ERROR] Erro ao acessar a página ${currentPage} após múltiplas tentativas:`, error);
-          continue;
+          continue; // Pula esta página e tenta a próxima
         }
 
+        // Captura os dados das vagas na página atual
         try {
           const jobsResult = await page.evaluate(() => {
             const jobElements = Array.from(
@@ -123,7 +133,7 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
               const title = job
                 .querySelector(".job-card-list__title")
                 ?.innerText.trim()
-                .replace(/\n/g, ' ');
+                .replace(/\n/g, ' '); // Remover quebras de linha
 
               const company = job
                 .querySelector(".job-card-container__primary-description")
@@ -145,6 +155,7 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
           });
           console.info(`[INFO] Número de vagas coletadas na página ${currentPage}: ${jobsResult.length}`);
 
+          // Adiciona os resultados ao array geral, removendo duplicados com base no ID do link
           jobsResult.forEach((job) => {
             if (job.link) {
               const jobIdMatch = job.link.match(/(\d+)/);
@@ -157,6 +168,7 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
             }
           });
 
+          // Verificar se já coletamos o número máximo de vagas solicitado
           if (allJobs.length >= maxJobs) {
             console.log(`[INFO] Número máximo de vagas (${maxJobs}) alcançado.`);
             break;
@@ -183,22 +195,23 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
     }
   }
 
-  return allJobs.slice(0, maxJobs);
+  return allJobs.slice(0, maxJobs); // Retorna apenas o número máximo de vagas solicitado
 }
 
 // Endpoint da API para scraping
-apiRouter.post("/scrape-jobs", async (req, res) => {
+app.post("/scrape-jobs", async (req, res) => {
   const { li_at, searchTerm, location, webhook, maxJobs } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
 
-  const maxJobsCount = maxJobs || 50;
+  const maxJobsCount = maxJobs || 50; // Define um limite padrão de 50 vagas, caso não seja especificado
 
   try {
     const jobs = await getJobListings(li_at, searchTerm, location, maxJobsCount);
 
+    // Enviar o resultado ao webhook, caso tenha sido fornecido
     if (webhook) {
       console.log("[INFO] Enviando dados para o webhook...");
       await axios
@@ -207,7 +220,11 @@ apiRouter.post("/scrape-jobs", async (req, res) => {
           console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
         })
         .catch((error) => {
-          console.error("[ERROR] Erro ao acionar o webhook:", error.response?.status, error.response?.data);
+          console.error(
+            "[ERROR] Erro ao acionar o webhook:",
+            error.response?.status,
+            error.response?.data
+          );
         });
     }
 
@@ -218,8 +235,7 @@ apiRouter.post("/scrape-jobs", async (req, res) => {
   }
 });
 
-app.use("/api", apiRouter);
-
+// Inicializar o servidor na porta 3000
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
