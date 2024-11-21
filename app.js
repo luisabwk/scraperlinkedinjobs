@@ -14,12 +14,11 @@ app.post("/scrape-jobs", async (req, res) => {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
 
-  const maxJobsCount = maxJobs || 50; // Define um limite padrão de 50 vagas, caso não seja especificado
+  const maxJobsCount = maxJobs || 50;
 
   try {
     const jobs = await getJobListings(li_at, searchTerm, location, maxJobsCount);
 
-    // Enviar o resultado ao webhook, caso tenha sido fornecido
     if (webhook) {
       console.log("[INFO] Enviando dados para o webhook...");
       await axios
@@ -65,4 +64,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
-
