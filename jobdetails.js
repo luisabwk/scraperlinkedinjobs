@@ -1,5 +1,11 @@
+const express = require("express");
 const puppeteer = require("puppeteer");
+const axios = require("axios");
 
+const app = express();
+app.use(express.json());
+
+// Função para obter os detalhes da vaga
 async function getJobDetails(li_at, jobLink) {
   console.log("[INFO] Iniciando o navegador do Puppeteer para detalhes da vaga...");
 
@@ -13,18 +19,13 @@ async function getJobDetails(li_at, jobLink) {
         "--disable-dev-shm-usage",
         "--disable-extensions",
         "--disable-gpu",
-        "--single-process", // Evita multiprocessamento, útil em ambientes limitados
-        "--no-zygote",      // Desativa processos zygote, reduzindo o consumo de recursos
+        "--single-process",
+        "--no-zygote",
       ],
     });
 
     const page = await browser.newPage();
     console.log("[INFO] Navegador iniciado com sucesso.");
-
-    await page.setDefaultNavigationTimeout(180000); // 3 minutos
-    await page.setDefaultTimeout(180000); // 3 minutos
-
-    console.log(`[INFO] Acessando o link da vaga: ${jobLink}`);
 
     // Define o cookie `li_at` com o valor fornecido
     await page.setCookie({
@@ -38,15 +39,20 @@ async function getJobDetails(li_at, jobLink) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
-    // Navegar para o link da vaga com retries
+    console.log(`[INFO] Acessando o link da vaga: ${jobLink}`);
     await page.goto(jobLink, { waitUntil: "domcontentloaded", timeout: 60000 });
 
     // Captura os detalhes da vaga
     const jobDetails = await page.evaluate(() => {
       const vaga = document.querySelector("h1")?.innerText.trim() || "Título não encontrado";
-      const empresa = document.querySelector(".topcard__org-name-link")?.innerText.trim() || "Empresa não encontrada";
-      const local = document.querySelector(".topcard__flavor--bullet")?.innerText.trim() || "Localização não encontrada";
-      const descricao = document.querySelector("#job-details")?.innerText.trim() || "Descrição não encontrada";
+      const empresa = document.querySelector(".topcard__org-name-link")?.innerText.trim() ||
+                      document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "Empresa não encontrada";
+      const local = document.querySelector(".topcard__flavor--bullet")?.innerText.trim() ||
+                    document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "Localização não encontrada";
+      const descricao = document.querySelector("#job-details .jobs-box__html-content.jobs-description-content__text")?.innerText.trim() ||
+                       document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() ||
+                       document.querySelector(".jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() ||
+                       "Descrição não encontrada";
 
       return {
         vaga,
@@ -70,3 +76,26 @@ async function getJobDetails(li_at, jobLink) {
 }
 
 module.exports = { getJobDetails };
+
+// Endpoint da API para obter detalhes de uma vaga específica
+app.post("/jobdetails", async (req, res) => {
+  const { li_at, jobLink } = req.body;
+
+  if (!li_at || !jobLink) {
+    return res.status(400).send({ error: "Parâmetros 'li_at' e 'jobLink' são obrigatórios." });
+  }
+
+  try {
+    const jobDetails = await getJobDetails(li_at, jobLink);
+    res.status(200).send({ message: "Detalhes da vaga obtidos com sucesso!", jobDetails });
+  } catch (error) {
+    console.error("[ERROR] Falha ao obter os detalhes da vaga:", error.message);
+    res.status(500).send({ error: error.message });
+  }
+});
+
+// Inicializar o servidor na porta 3000
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
