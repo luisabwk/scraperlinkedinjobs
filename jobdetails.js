@@ -40,18 +40,21 @@ async function getJobDetails(li_at, jobLink) {
     );
 
     console.log(`[INFO] Acessando o link da vaga: ${jobLink}`);
-    await page.goto(jobLink, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(jobLink, { waitUntil: "networkidle2", timeout: 120000 });
 
     // Captura os detalhes da vaga
     const jobDetails = await page.evaluate(() => {
       const vaga = document.querySelector("h1")?.innerText.trim() || "Título não encontrado";
       const empresa = document.querySelector(".topcard__org-name-link")?.innerText.trim() ||
-                      document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "Empresa não encontrada";
-      const local = document.querySelector(".topcard__flavor--bullet")?.innerText.trim() ||
-                    document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "Localização não encontrada";
+                      document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() ||
+                      "Empresa não encontrada";
+      const local = document.querySelector(".topcard__flavor--bullet")?.innerText.trim().split(" · ")[0] ||
+                    document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim().split(" · ")[0] ||
+                    "Localização não encontrada";
       const descricao = document.querySelector("#job-details .jobs-box__html-content.jobs-description-content__text")?.innerText.trim() ||
-                       document.querySelector(".jobs-description__container.jobs-description__container--condensed")?.innerText.trim() ||
+                       document.querySelector(".jobs-description__content.jobs-description__content--condensed")?.innerText.trim() ||
                        document.querySelector(".jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() ||
+                       document.querySelector(".jobs-description__container p")?.innerText.trim() ||
                        "Descrição não encontrada";
 
       return {
