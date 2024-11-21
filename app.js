@@ -5,9 +5,9 @@ const jobDetailsRouter = require("./jobdetails");
 const app = express();
 app.use(express.json());
 
-// Rotas importadas
-app.use(scrapeJobsRouter);
-app.use(jobDetailsRouter);
+// Adicionando as rotas
+app.use("/api", scrapeJobsRouter);  // /api/scrape-jobs
+app.use("/api", jobDetailsRouter);  // /api/jobdetails
 
 // Inicializar o servidor na porta 3000
 const PORT = process.env.PORT || 3000;
