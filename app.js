@@ -1,13 +1,15 @@
 const express = require("express");
+
+// Importa os roteadores
 const scrapeJobsRouter = require("./scrape-jobs");
 const jobDetailsRouter = require("./jobdetails");
 
 const app = express();
 app.use(express.json());
 
-// Adicionando as rotas
-app.use("/api", scrapeJobsRouter);  // /api/scrape-jobs
-app.use("/api", jobDetailsRouter);  // /api/jobdetails
+// Usa os roteadores para definir as rotas
+app.use("/api", scrapeJobsRouter);  // Rota para scrape-jobs
+app.use("/api", jobDetailsRouter);  // Rota para jobdetails
 
 // Inicializar o servidor na porta 3000
 const PORT = process.env.PORT || 3000;
