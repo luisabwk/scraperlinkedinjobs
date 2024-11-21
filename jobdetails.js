@@ -1,9 +1,7 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
-
 const router = express.Router();
 
-// Função para obter detalhes de uma vaga
 async function getJobDetails(li_at, jobLink) {
   let browser;
   let jobDetails = {
@@ -94,14 +92,11 @@ async function getJobDetails(li_at, jobLink) {
   return jobDetails;
 }
 
-// Endpoint para obter detalhes da vaga
 router.post("/jobdetails", async (req, res) => {
   const { li_at, jobLink } = req.body;
 
   if (!li_at || !jobLink) {
-    return res
-      .status(400)
-      .send({ error: "Parâmetros 'li_at' e 'jobLink' são obrigatórios." });
+    return res.status(400).send({ error: "Parâmetros 'li_at' e 'jobLink' são obrigatórios." });
   }
 
   try {
