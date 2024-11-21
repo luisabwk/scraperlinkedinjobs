@@ -3,10 +3,8 @@ const puppeteer = require("puppeteer");
 
 const router = express.Router();
 
-// Função para obter os detalhes da vaga
+// Função para obter detalhes de uma vaga
 async function getJobDetails(li_at, jobLink) {
-  console.log("[INFO] Iniciando o navegador do Puppeteer...");
-
   let browser;
   let jobDetails = {
     vaga: "",
@@ -44,8 +42,8 @@ async function getJobDetails(li_at, jobLink) {
       value: li_at,
       domain: ".linkedin.com",
     });
-    console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
 
+    console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
