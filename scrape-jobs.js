@@ -1,9 +1,5 @@
-const express = require("express");
 const puppeteer = require("puppeteer");
 const axios = require("axios");
-
-const app = express();
-app.use(express.json());
 
 // Função para obter as vagas
 async function getJobListings(li_at, searchTerm, location, maxJobs) {
@@ -73,6 +69,7 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
             if (i === retries - 1) {
               throw error;
             }
+            await page.waitForTimeout(2000); // Espera antes de tentar novamente
           }
         }
       }
@@ -126,21 +123,21 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
         try {
           const jobsResult = await page.evaluate(() => {
             const jobElements = Array.from(
-              document.querySelectorAll(".jobs-search-results__list-item")
+              document.querySelectorAll("[class*='jobs-search-results__list-item']")
             );
 
             return jobElements.map((job) => {
               const title = job
-                .querySelector(".job-card-list__title")
+                .querySelector("[class*='job-card-list__title']")
                 ?.innerText.trim()
-                .replace(/\n/g, ' '); // Remover quebras de linha
+                .replace(/\n/g, ' ');
 
               const company = job
-                .querySelector(".job-card-container__primary-description")
+                .querySelector("[class*='job-card-container__primary-description']")
                 ?.innerText.trim();
 
               const location = job
-                .querySelector(".job-card-container__metadata-item")
+                .querySelector("[class*='job-card-container__metadata-item']")
                 ?.innerText.trim();
 
               const link = job.querySelector("a")?.href;
@@ -198,45 +195,4 @@ async function getJobListings(li_at, searchTerm, location, maxJobs) {
   return allJobs.slice(0, maxJobs); // Retorna apenas o número máximo de vagas solicitado
 }
 
-// Endpoint da API para scraping
-app.post("/scrape-jobs", async (req, res) => {
-  const { li_at, searchTerm, location, webhook, maxJobs } = req.body;
-
-  if (!li_at || !searchTerm || !location) {
-    return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
-  }
-
-  const maxJobsCount = maxJobs || 50; // Define um limite padrão de 50 vagas, caso não seja especificado
-
-  try {
-    const jobs = await getJobListings(li_at, searchTerm, location, maxJobsCount);
-
-    // Enviar o resultado ao webhook, caso tenha sido fornecido
-    if (webhook) {
-      console.log("[INFO] Enviando dados para o webhook...");
-      await axios
-        .post(webhook, { jobs })
-        .then((response) => {
-          console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
-        })
-        .catch((error) => {
-          console.error(
-            "[ERROR] Erro ao acionar o webhook:",
-            error.response?.status,
-            error.response?.data
-          );
-        });
-    }
-
-    res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
-  } catch (error) {
-    console.error("[ERROR] Falha durante a requisição:", error.message);
-    res.status(500).send({ error: error.message });
-  }
-});
-
-// Inicializar o servidor na porta 3000
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
+module.exports = getJobListings;
