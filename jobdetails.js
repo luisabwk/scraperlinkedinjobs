@@ -1,4 +1,9 @@
+const express = require("express");
 const puppeteer = require("puppeteer");
+const axios = require("axios");
+
+const app = express();
+app.use(express.json());
 
 // Função para obter os detalhes da vaga
 async function getJobDetails(li_at, jobLink) {
@@ -34,8 +39,25 @@ async function getJobDetails(li_at, jobLink) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
+    // Função para tentar acessar a página com retries
+    async function navigateWithRetries(url, retries = 3) {
+      for (let i = 0; i < retries; i++) {
+        try {
+          console.log(`[INFO] Tentativa ${i + 1} de acessar o link da vaga: ${url}`);
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 180000 });
+          console.info(`[INFO] Página acessada com sucesso: ${url}`);
+          return;
+        } catch (error) {
+          console.error(`[ERROR] Erro ao acessar a página, tentativa ${i + 1} de ${retries}:`, error);
+          if (i === retries - 1) {
+            throw error;
+          }
+        }
+      }
+    }
+
     console.log(`[INFO] Acessando o link da vaga: ${jobLink}`);
-    await page.goto(jobLink, { waitUntil: "networkidle2", timeout: 120000 });
+    await navigateWithRetries(jobLink);
 
     // Captura os detalhes da vaga
     const jobDetails = await page.evaluate(() => {
@@ -74,3 +96,26 @@ async function getJobDetails(li_at, jobLink) {
 }
 
 module.exports = { getJobDetails };
+
+// Endpoint da API para obter detalhes de uma vaga específica
+app.post("/jobdetails", async (req, res) => {
+  const { li_at, jobLink } = req.body;
+
+  if (!li_at || !jobLink) {
+    return res.status(400).send({ error: "Parâmetros 'li_at' e 'jobLink' são obrigatórios." });
+  }
+
+  try {
+    const jobDetails = await getJobDetails(li_at, jobLink);
+    res.status(200).send({ message: "Detalhes da vaga obtidos com sucesso!", jobDetails });
+  } catch (error) {
+    console.error("[ERROR] Falha ao obter os detalhes da vaga:", error.message);
+    res.status(500).send({ error: error.message });
+  }
+});
+
+// Inicializar o servidor na porta 3000 ou em uma porta definida pela variável de ambiente
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
