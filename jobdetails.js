@@ -1,9 +1,4 @@
-const express = require("express");
 const puppeteer = require("puppeteer");
-const axios = require("axios");
-
-const app = express();
-app.use(express.json());
 
 // Função para obter os detalhes da vaga
 async function getJobDetails(li_at, jobLink) {
@@ -40,13 +35,7 @@ async function getJobDetails(li_at, jobLink) {
     );
 
     console.log(`[INFO] Acessando o link da vaga: ${jobLink}`);
-
-    try {
-      await page.goto(jobLink, { waitUntil: "domcontentloaded", timeout: 120000 });
-    } catch (initialError) {
-      console.warn("[WARN] Primeira tentativa de acesso falhou, tentando novamente...");
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 120000 });
-    }
+    await page.goto(jobLink, { waitUntil: "networkidle2", timeout: 120000 });
 
     // Captura os detalhes da vaga
     const jobDetails = await page.evaluate(() => {
@@ -85,26 +74,3 @@ async function getJobDetails(li_at, jobLink) {
 }
 
 module.exports = { getJobDetails };
-
-// Endpoint da API para obter detalhes de uma vaga específica
-app.post("/jobdetails", async (req, res) => {
-  const { li_at, jobLink } = req.body;
-
-  if (!li_at || !jobLink) {
-    return res.status(400).send({ error: "Parâmetros 'li_at' e 'jobLink' são obrigatórios." });
-  }
-
-  try {
-    const jobDetails = await getJobDetails(li_at, jobLink);
-    res.status(200).send({ message: "Detalhes da vaga obtidos com sucesso!", jobDetails });
-  } catch (error) {
-    console.error("[ERROR] Falha ao obter os detalhes da vaga:", error.message);
-    res.status(500).send({ error: error.message });
-  }
-});
-
-// Inicializar o servidor na porta 3000
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
