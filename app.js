@@ -1,84 +1,31 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
-const axios = require("axios");
 
 const app = express();
 app.use(express.json());
 
-// Função para obter os detalhes da vaga
-async function getJobDetails(li_at, jobLink) {
-  console.log("[INFO] Iniciando o navegador do Puppeteer para detalhes da vaga...");
+// Importar os módulos de scraping
+const { getJobListings } = require("./scrape-jobs");
+const { getJobDetails } = require("./jobdetails");
 
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-extensions",
-        "--disable-gpu",
-        "--single-process",
-        "--no-zygote",
-      ],
-    });
+// Endpoint da API para scraping das vagas
+app.post("/scrape-jobs", async (req, res) => {
+  const { li_at, searchTerm, location, maxJobs } = req.body;
 
-    const page = await browser.newPage();
-    console.log("[INFO] Navegador iniciado com sucesso.");
-
-    // Define o cookie `li_at` com o valor fornecido
-    await page.setCookie({
-      name: "li_at",
-      value: li_at,
-      domain: ".linkedin.com",
-    });
-
-    // Define o User-Agent para simular um navegador comum
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
-    );
-
-    console.log(`[INFO] Acessando o link da vaga: ${jobLink}`);
-    await page.goto(jobLink, { waitUntil: "networkidle2", timeout: 120000 });
-
-    // Captura os detalhes da vaga
-    const jobDetails = await page.evaluate(() => {
-      const vaga = document.querySelector("h1")?.innerText.trim() || "Título não encontrado";
-      const empresa = document.querySelector(".topcard__org-name-link")?.innerText.trim() ||
-                      document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() ||
-                      "Empresa não encontrada";
-      const local = document.querySelector(".topcard__flavor--bullet")?.innerText.trim().split(" · ")[0] ||
-                    document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim().split(" · ")[0] ||
-                    "Localização não encontrada";
-      const descricao = document.querySelector("#job-details .jobs-box__html-content.jobs-description-content__text")?.innerText.trim() ||
-                       document.querySelector(".jobs-description__content.jobs-description__content--condensed")?.innerText.trim() ||
-                       document.querySelector(".jobs-box__html-content.jobs-description-content__text.t-14.t-normal.jobs-description-content__text--stretch")?.innerText.trim() ||
-                       document.querySelector(".jobs-description__container p")?.innerText.trim() ||
-                       "Descrição não encontrada";
-
-      return {
-        vaga,
-        empresa,
-        local,
-        descricao,
-      };
-    });
-
-    console.log("[INFO] Detalhes da vaga obtidos com sucesso:", jobDetails);
-    return jobDetails;
-  } catch (error) {
-    console.error("[ERROR] Erro ao obter detalhes da vaga:", error);
-    throw new Error("Erro ao obter detalhes da vaga.");
-  } finally {
-    if (browser) {
-      console.log("[INFO] Fechando o navegador do Puppeteer...");
-      await browser.close();
-    }
+  if (!li_at || !searchTerm || !location) {
+    return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
-}
 
-module.exports = { getJobDetails };
+  const maxJobsCount = maxJobs || 50; // Define um limite padrão de 50 vagas, caso não seja especificado
+
+  try {
+    const jobs = await getJobListings(li_at, searchTerm, location, maxJobsCount);
+
+    res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
+  } catch (error) {
+    console.error("[ERROR] Falha durante a requisição:", error.message);
+    res.status(500).send({ error: error.message });
+  }
+});
 
 // Endpoint da API para obter detalhes de uma vaga específica
 app.post("/jobdetails", async (req, res) => {
