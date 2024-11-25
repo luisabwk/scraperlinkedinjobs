@@ -99,23 +99,53 @@ async function getJobListings(page, searchTerm, location, li_at) {
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
 
-    // Enviar todos os resultados ao webhook em um único pacote
-    console.log("[INFO] Enviando dados para o webhook...");
-    await axios
-      .post("https://hook.us1.make.com/agmroyiby7p6womm81ud868tfntxb03c", { jobs: allJobs })
-      .then((response) => {
-        console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
-      })
-      .catch((error) => {
-        console.error(
-          "[ERROR] Erro ao acionar o webhook:",
-          error.response?.status,
-          error.response?.data
-        );
-      });
+    return allJobs;
   } catch (error) {
     console.error("[ERROR] Erro ao carregar a página inicial:", error);
+    throw error;
   }
 }
 
-module.exports = getJobListings;
+module.exports = async (req, res) => {
+  const { searchTerm, location, li_at, webhook } = req.body;
+
+  if (!li_at || !searchTerm || !location) {
+    return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
+  }
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+
+  const page = await browser.newPage();
+
+  try {
+    // Usando a função getJobListings
+    const jobs = await getJobListings(page, searchTerm, location, li_at);
+
+    // Enviar o resultado ao webhook, caso tenha sido fornecido
+    if (webhook) {
+      console.log("[INFO] Enviando dados para o webhook...");
+      await axios
+        .post(webhook, { jobs })
+        .then((response) => {
+          console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
+        })
+        .catch((error) => {
+          console.error(
+            "[ERROR] Erro ao acionar o webhook:",
+            error.response?.status,
+            error.response?.data
+          );
+        });
+    }
+
+    res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
+  } catch (error) {
+    console.error("[ERROR] Ocorreu um erro:", error.message);
+    res.status(500).send({ error: error.message });
+  } finally {
+    await browser.close();
+  }
+};
