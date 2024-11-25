@@ -4,7 +4,7 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
-async function getJobListings(page, searchTerm, location) {
+async function getJobListings(page, searchTerm, location, li_at) {
   let allJobs = [];
   let currentPage = 1;
 
@@ -19,7 +19,7 @@ async function getJobListings(page, searchTerm, location) {
   // Define o cookie `li_at` com o valor fornecido
   await page.setCookie({
     name: "li_at",
-    value: "AQEDAVTmO_kBaBKbAAABk0EYbLgAAAGTZSTwuE0AOMKUzuttEViH57g0rIRb12QeLVfe5j19f3pZiEvoO4jfZuGwzXd-lsI8cG0lAnqRoC7k0gfmsCt7HVa0i616HLv2ub15pXGSFCklA975IFpgcOKR",
+    value: li_at,
     domain: ".linkedin.com",
   });
 
@@ -123,9 +123,9 @@ async function getJobListings(page, searchTerm, location) {
 
 // Endpoint scrape-jobs
 app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location } = req.body;
-  if (!searchTerm || !location) {
-    return res.status(400).send({ error: "Os parâmetros 'searchTerm' e 'location' são obrigatórios." });
+  const { li_at, searchTerm, location } = req.body;
+  if (!li_at || !searchTerm || !location) {
+    return res.status(400).send({ error: "Os parâmetros 'li_at', 'searchTerm', e 'location' são obrigatórios." });
   }
 
   const browser = await puppeteer.launch({
@@ -138,7 +138,7 @@ app.post("/scrape-jobs", async (req, res) => {
   const page = await browser.newPage();
 
   try {
-    await getJobListings(page, searchTerm, location);
+    await getJobListings(page, searchTerm, location, li_at);
     res.status(200).send({ message: "Scraping realizado com sucesso!" });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
