@@ -5,7 +5,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-app.post("/scrape", async (req, res) => {
+app.post("/scrape-jobs", async (req, res) => {
   const { searchTerm, location } = req.body;
 
   if (!searchTerm || !location) {
@@ -36,7 +36,7 @@ app.post("/scrape", async (req, res) => {
     // Define o cookie `li_at` com o valor fornecido
     await page.setCookie({
       name: "li_at",
-      value: "COOKIE AQUI",
+      value: liAtCookie,
       domain: ".linkedin.com",
     });
 
