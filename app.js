@@ -1,14 +1,15 @@
-const express = require("express");
-const scrapeJobs = require("./scrape-jobs");
-
+const express = require('express');
 const app = express();
-app.use(express.json());
 
-// Endpoint para scraping de vagas
-app.post("/scrape-jobs", scrapeJobs);
+// Exemplo problemático:
+// app.post('/endpoint', { invalid: "object" }); // Isto gera erro
 
-// Inicializar o servidor na porta 3000
+// Solução: Passe uma função como callback
+app.post('/scrape-jobs', (req, res) => {
+  res.send('Callback funcionando!');
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
