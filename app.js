@@ -1,4 +1,5 @@
 const express = require("express");
+const puppeteer = require("puppeteer");  // Adicione esta linha para importar o Puppeteer
 const getJobListings = require("./scrape-jobs");
 
 const app = express();
@@ -13,12 +14,14 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 
   try {
+    // Lançar o navegador Puppeteer
     const browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     const page = await browser.newPage();
+    // Executar a função getJobListings
     const jobs = await getJobListings(page, searchTerm, location, li_at);
 
     await browser.close();
