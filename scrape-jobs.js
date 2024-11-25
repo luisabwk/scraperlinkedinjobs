@@ -5,7 +5,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-app.post("/scrape-jobs", async (req, res) => {
+app.post("/scrape", async (req, res) => {
   const { searchTerm, location } = req.body;
 
   if (!searchTerm || !location) {
@@ -36,7 +36,7 @@ app.post("/scrape-jobs", async (req, res) => {
     // Define o cookie `li_at` com o valor fornecido
     await page.setCookie({
       name: "li_at",
-      value: liAtCookie,
+      value: "COOKIE AQUI",
       domain: ".linkedin.com",
     });
 
@@ -128,9 +128,11 @@ app.post("/scrape-jobs", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 const startServer = (port) => {
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`Servidor rodando na porta ${port}`);
-  }).on('error', (err) => {
+  });
+
+  server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.warn(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
       startServer(port + 1);
