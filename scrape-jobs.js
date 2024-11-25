@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 const axios = require("axios");
 
-async function getJobListings(page, searchTerm, location) {
+async function getJobListings(page, searchTerm, location, li_at) {
   let allJobs = [];
   let currentPage = 1;
 
@@ -16,7 +16,7 @@ async function getJobListings(page, searchTerm, location) {
   // Define o cookie `li_at` com o valor fornecido
   await page.setCookie({
     name: "li_at",
-    value: "AQEDAVTmO_kBaBKbAAABk0EYbLgAAAGTZSTwuE0AOMKUzuttEViH57g0rIRb12QeLVfe5j19f3pZiEvoO4jfZuGwzXd-lsI8cG0lAnqRoC7k0gfmsCt7HVa0i616HLv2ub15pXGSFCklA975IFpgcOKR",
+    value: li_at,
     domain: ".linkedin.com",
   });
 
@@ -108,32 +108,4 @@ async function getJobListings(page, searchTerm, location) {
       })
       .catch((error) => {
         console.error(
-          "[ERROR] Erro ao acionar o webhook:",
-          error.response?.status,
-          error.response?.data
-        );
-      });
-  } catch (error) {
-    console.error("[ERROR] Erro ao carregar a página inicial:", error);
-  }
-}
-
-(async () => {
-  const browser = await puppeteer.launch({
-    executablePath:
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    headless: false,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
-
-  const page = await browser.newPage();
-
-  try {
-    // Usando a função getJobListings
-    await getJobListings(page, "growth marketing", "Brasil");
-  } catch (error) {
-    console.error("[ERROR] Ocorreu um erro:", error);
-  } finally {
-    await browser.close();
-  }
-})();
+          "[ERROR] Err
