@@ -53,9 +53,19 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
         );
 
         return jobElements.map((job) => {
-          const title = job.querySelector(".job-card-list__title")?.innerText.trim().replace(/\n/g, ' ');
-          const company = job.querySelector(".job-card-container__primary-description")?.innerText.trim();
-          const location = job.querySelector(".job-card-container__metadata-item")?.innerText.trim();
+          const title = job
+            .querySelector(".job-card-list__title")
+            ?.innerText.trim()
+            .replace(/\n/g, ' '); // Remover quebras de linha
+
+          const company = job
+            .querySelector(".job-card-container__primary-description")
+            ?.innerText.trim();
+
+          const location = job
+            .querySelector(".job-card-container__metadata-item")
+            ?.innerText.trim();
+
           const link = job.querySelector("a")?.href;
 
           return {
@@ -98,21 +108,3 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
 
 // Exporta a função para que possa ser usada em outros arquivos
 module.exports = { getJobListings };
-
-(async (searchTerm, location, liAtCookie, maxJobs) => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
-
-  const page = await browser.newPage();
-
-  try {
-    const jobs = await getJobListings(page, searchTerm, location, liAtCookie, parseInt(maxJobs, 10));
-    console.log("[INFO] Relação de vagas extraídas:", jobs);
-  } catch (error) {
-    console.error("[ERROR] Ocorreu um erro:", error);
-  } finally {
-    await browser.close();
-  }
-})(process.argv[2], process.argv[3], process.argv[4], process.argv[5]);
