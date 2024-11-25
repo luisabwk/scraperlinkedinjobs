@@ -1,6 +1,6 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
-const { getJobListings } = require('./scraper-jobs'); // Importa a função de scraping do arquivo scraper-jobs.js
+const { getJobListings } = require('./scrape-jobs'); // Importa a função de scraping do arquivo scraper-jobs.js
 
 const app = express();
 
