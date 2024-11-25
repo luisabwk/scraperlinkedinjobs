@@ -25,9 +25,24 @@ async function getJobListings(page, searchTerm, location, li_at) {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
   );
 
+  // Adiciona headers adicionais para simular um usuário real
+  await page.setExtraHTTPHeaders({
+    "accept-language": "en-US,en;q=0.9",
+    "sec-fetch-user": "?1",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-dest": "document",
+    "upgrade-insecure-requests": "1",
+  });
+
   try {
     // Acessa a URL inicial para obter informações gerais, como total de páginas
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+    // Verificar se fomos redirecionados para uma página de login
+    if (await page.$("input#session_key")) {
+      throw new Error("Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
+    }
 
     // Extrair o número total de páginas de resultados
     let totalPages = 1;
@@ -99,15 +114,27 @@ async function getJobListings(page, searchTerm, location, li_at) {
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
 
-    return allJobs;
+    // Enviar todos os resultados ao webhook em um único pacote
+    console.log("[INFO] Enviando dados para o webhook...");
+    await axios
+      .post("https://hook.us1.make.com/agmroyiby7p6womm81ud868tfntxb03c", { jobs: allJobs })
+      .then((response) => {
+        console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
+      })
+      .catch((error) => {
+        console.error(
+          "[ERROR] Erro ao acionar o webhook:",
+          error.response?.status,
+          error.response?.data
+        );
+      });
   } catch (error) {
     console.error("[ERROR] Erro ao carregar a página inicial:", error);
-    throw error;
   }
 }
 
 module.exports = async (req, res) => {
-  const { searchTerm, location, li_at, webhook } = req.body;
+  const { li_at, searchTerm, location, webhook } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
@@ -122,28 +149,11 @@ module.exports = async (req, res) => {
 
   try {
     // Usando a função getJobListings
-    const jobs = await getJobListings(page, searchTerm, location, li_at);
+    await getJobListings(page, searchTerm, location, li_at);
 
-    // Enviar o resultado ao webhook, caso tenha sido fornecido
-    if (webhook) {
-      console.log("[INFO] Enviando dados para o webhook...");
-      await axios
-        .post(webhook, { jobs })
-        .then((response) => {
-          console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
-        })
-        .catch((error) => {
-          console.error(
-            "[ERROR] Erro ao acionar o webhook:",
-            error.response?.status,
-            error.response?.data
-          );
-        });
-    }
-
-    res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
+    res.status(200).send({ message: "Scraping realizado com sucesso!" });
   } catch (error) {
-    console.error("[ERROR] Ocorreu um erro:", error.message);
+    console.error("[ERROR] Ocorreu um erro:", error);
     res.status(500).send({ error: error.message });
   } finally {
     await browser.close();
