@@ -75,23 +75,33 @@ async function getJobListings(page, searchTerm, location, li_at) {
           const title = job
             .querySelector(".job-card-list__title")
             ?.innerText.trim()
-            .replace(/\n/g, ' '); // Remover quebras de linha
+            .replace(/\n/g, ' ') || "";
 
           const company = job
             .querySelector(".job-card-container__primary-description")
-            ?.innerText.trim();
+            ?.innerText.trim() || "";
 
           const location = job
             .querySelector(".job-card-container__metadata-item")
-            ?.innerText.trim();
+            ?.innerText.trim() || "";
 
-          const link = job.querySelector("a")?.href;
+          const format = job
+            .querySelector(".job-card-container__workplace-type")
+            ?.innerText.trim() || "";
+
+          const cargahoraria = job
+            .querySelector(".job-card-container__work-schedule")
+            ?.innerText.trim() || "";
+
+          const link = job.querySelector("a")?.href || "";
 
           return {
-            vaga: title || "",
-            empresa: company || "",
-            local: location || "",
-            link: link || "",
+            vaga: title,
+            empresa: company,
+            local: location,
+            formato: format,
+            cargahoraria: cargahoraria,
+            link: link,
           };
         });
       });
@@ -149,9 +159,8 @@ module.exports = async (req, res) => {
 
   try {
     // Usando a função getJobListings
-    await getJobListings(page, searchTerm, location, li_at);
-
-    res.status(200).send({ message: "Scraping realizado com sucesso!" });
+    const jobs = await getJobListings(page, searchTerm, location, li_at);
+    res.status(200).send(jobs);
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
     res.status(500).send({ error: error.message });
