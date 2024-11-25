@@ -1,5 +1,5 @@
 const express = require("express");
-const scrapeJobs = require("./scrape-jobs");
+const getJobListings = require("./scrape-jobs");
 
 const app = express();
 app.use(express.json());
@@ -13,7 +13,15 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 
   try {
-    const jobs = await scrapeJobs(li_at, searchTerm, location, maxJobs);
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    const page = await browser.newPage();
+    const jobs = await getJobListings(page, searchTerm, location, li_at);
+
+    await browser.close();
 
     // Enviar o resultado ao webhook, caso tenha sido fornecido
     if (webhook) {
