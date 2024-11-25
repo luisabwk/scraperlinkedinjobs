@@ -54,12 +54,12 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
 
         return jobElements.map((job) => {
           const title = job
-            .querySelector(".disabled ember-view job-card-container__link job-card-list__title job-card-list__title--link")
+            .querySelector(".job-card-list__title")
             ?.innerText.trim()
             .replace(/\n/g, ' '); // Remover quebras de linha
 
           const company = job
-            .querySelector(".artdeco-entity-lockup__subtitle ember-view")
+            .querySelector(".job-card-container__primary-description")
             ?.innerText.trim();
 
           const location = job
