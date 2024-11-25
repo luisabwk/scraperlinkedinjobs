@@ -1,31 +1,50 @@
+const express = require("express");
 const puppeteer = require("puppeteer");
 const axios = require("axios");
 
-async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
-  let allJobs = [];
-  let currentPage = 1;
+const app = express();
+app.use(express.json());
 
-  const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
-    searchTerm
-  )}&location=${encodeURIComponent(
-    location
-  )}&geoId=106057199&f_TPR=r86400`;
+app.post("/scrape", async (req, res) => {
+  const { searchTerm, location } = req.body;
 
-  console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
+  if (!searchTerm || !location) {
+    return res.status(400).json({ error: "Parâmetros 'searchTerm' e 'location' são obrigatórios." });
+  }
 
-  // Define o cookie `li_at` com o valor fornecido na chamada de API
-  await page.setCookie({
-    name: "li_at",
-    value: liAtCookie, // Recebido como parâmetro da função
-    domain: ".linkedin.com",
-  });
-
-  // Define o User-Agent para simular um navegador comum
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
-  );
-
+  let browser;
   try {
+    browser = await puppeteer.launch({
+      executablePath:
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      headless: false,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    const page = await browser.newPage();
+    let allJobs = [];
+    let currentPage = 1;
+
+    const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
+      searchTerm
+    )}&location=${encodeURIComponent(
+      location
+    )}&geoId=106057199&f_TPR=r86400`;
+
+    console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
+
+    // Define o cookie `li_at` com o valor fornecido
+    await page.setCookie({
+      name: "li_at",
+      value: "COOKIE AQUI",
+      domain: ".linkedin.com",
+    });
+
+    // Define o User-Agent para simular um navegador comum
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
+    );
+
     // Acessa a URL inicial para obter informações gerais, como total de páginas
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
@@ -56,10 +75,10 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
           const title = job
             .querySelector(".job-card-list__title")
             ?.innerText.trim()
-            .replace(/\n/g, ' '); // Remover quebras de linha
+            .replace(/\n/g, ' ');
 
           const company = job
-            .querySelector(".artdeco-entity-lockup__subtitle")
+            .querySelector(".job-card-container__primary-description")
             ?.innerText.trim();
 
           const location = job
@@ -78,7 +97,7 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
       });
 
       jobsResult.forEach((job) => {
-        if (job.link && allJobs.length < maxJobs) {
+        if (job.link) {
           const jobIdMatch = job.link.match(/(\d+)/);
           if (jobIdMatch) {
             const jobId = jobIdMatch[0];
@@ -90,21 +109,21 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
       });
 
       console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
-
-      // Verifica se o limite de vagas foi alcançado
-      if (allJobs.length >= maxJobs) {
-        console.info(`[INFO] Limite de ${maxJobs} vagas alcançado.`);
-        break;
-      }
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
-    return allJobs;
+    res.status(200).json({ jobs: allJobs });
   } catch (error) {
-    console.error("[ERROR] Erro ao carregar a página inicial:", error);
-    throw error;
+    console.error("[ERROR] Ocorreu um erro:", error);
+    res.status(500).json({ error: "Erro ao executar o scraping." });
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
   }
-}
+});
 
-// Exporta a função para que possa ser usada em outros arquivos
-module.exports = { getJobListings };
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
