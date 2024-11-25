@@ -127,6 +127,17 @@ app.post("/scrape", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+const startServer = (port) => {
+  app.listen(port, () => {
+    console.log(`Servidor rodando na porta ${port}`);
+  }).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
+      startServer(port + 1);
+    } else {
+      console.error(`[ERROR] Erro ao iniciar o servidor:`, err);
+    }
+  });
+};
+
+startServer(PORT);
