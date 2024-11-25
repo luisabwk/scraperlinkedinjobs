@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 const axios = require("axios");
 
-async function getJobListings(page, searchTerm, location, li_at) {
+async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
   let allJobs = [];
   let currentPage = 1;
 
@@ -13,10 +13,10 @@ async function getJobListings(page, searchTerm, location, li_at) {
 
   console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
 
-  // Define o cookie `li_at` com o valor fornecido
+  // Define o cookie `li_at` com o valor fornecido na chamada de API
   await page.setCookie({
     name: "li_at",
-    value: li_at,
+    value: liAtCookie, // Recebido como parâmetro da função
     domain: ".linkedin.com",
   });
 
@@ -29,12 +29,6 @@ async function getJobListings(page, searchTerm, location, li_at) {
     // Acessa a URL inicial para obter informações gerais, como total de páginas
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    // Verificar se fomos redirecionados para uma página de login
-    if (await page.$("input#session_key")) {
-      throw new Error("Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado.");
-    }
-
-    // Extrair o número total de páginas de resultados
     let totalPages = 1;
     try {
       totalPages = await page.$eval(
@@ -47,66 +41,34 @@ async function getJobListings(page, searchTerm, location, li_at) {
 
     console.info(`[INFO] Número total de páginas: ${totalPages}`);
 
-    // Iterar sobre cada página de 1 até o total de páginas
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
       console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
-      // Navegar para a página específica
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
       await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-      // Captura os dados das vagas na página atual
       const jobsResult = await page.evaluate(() => {
         const jobElements = Array.from(
           document.querySelectorAll(".jobs-search-results__list-item")
         );
 
-        // Se não encontrar elementos de vagas, logar aviso
-        if (jobElements.length === 0) {
-          console.warn("[WARN] Nenhum elemento de vaga encontrado na página atual.");
-        }
-
         return jobElements.map((job) => {
-          const title = job
-            .querySelector(".job-card-list__title")
-            ?.innerText.trim()
-            .replace(/\n/g, ' ') || "Título não encontrado";
-
-          const company = job
-            .querySelector(".job-card-container__primary-description")
-            ?.innerText.trim() || "Empresa não encontrada";
-
-          const location = job
-            .querySelector(".job-card-container__metadata-item")
-            ?.innerText.trim() || "Localização não encontrada";
-
-          const format = job
-            .querySelector(".job-card-container__workplace-type")
-            ?.innerText.trim() || "Formato não encontrado";
-
-          const cargahoraria = job
-            .querySelector(".job-card-container__work-schedule")
-            ?.innerText.trim() || "Carga horária não encontrada";
-
-          const link = job.querySelector("a")?.href || "Link não encontrado";
+          const title = job.querySelector(".job-card-list__title")?.innerText.trim().replace(/\n/g, ' ');
+          const company = job.querySelector(".job-card-container__primary-description")?.innerText.trim();
+          const location = job.querySelector(".job-card-container__metadata-item")?.innerText.trim();
+          const link = job.querySelector("a")?.href;
 
           return {
-            vaga: title,
-            empresa: company,
-            local: location,
-            formato: format,
-            cargahoraria: cargahoraria,
-            link: link,
+            vaga: title || "",
+            empresa: company || "",
+            local: location || "",
+            link: link || "",
           };
         });
       });
 
-      // Logando número de vagas coletadas na página atual
-      console.info(`[INFO] Número de vagas coletadas na página ${currentPage}: ${jobsResult.length}`);
-
-      // Adiciona os resultados ao array geral, removendo duplicados com base no ID do link
       jobsResult.forEach((job) => {
-        if (job.link) {
+        if (job.link && allJobs.length < maxJobs) {
           const jobIdMatch = job.link.match(/(\d+)/);
           if (jobIdMatch) {
             const jobId = jobIdMatch[0];
@@ -118,36 +80,31 @@ async function getJobListings(page, searchTerm, location, li_at) {
       });
 
       console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
+
+      // Verifica se o limite de vagas foi alcançado
+      if (allJobs.length >= maxJobs) {
+        console.info(`[INFO] Limite de ${maxJobs} vagas alcançado.`);
+        break;
+      }
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
-
-    // Enviar todos os resultados ao webhook em um único pacote
     console.log("[INFO] Enviando dados para o webhook...");
+
     await axios
-      .post("https://hook.us1.make.com/agmroyiby7p6womm81ud868tfntxb03c", { jobs: allJobs })
+      .post(process.env.WEBHOOK_URL, { jobs: allJobs }) // Usar variável de ambiente para o webhook
       .then((response) => {
         console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
       })
       .catch((error) => {
-        console.error(
-          "[ERROR] Erro ao acionar o webhook:",
-          error.response?.status,
-          error.response?.data
-        );
+        console.error("[ERROR] Erro ao acionar o webhook:", error.response?.status, error.response?.data);
       });
   } catch (error) {
     console.error("[ERROR] Erro ao carregar a página inicial:", error);
   }
 }
 
-module.exports = async (req, res) => {
-  const { li_at, searchTerm, location, webhook } = req.body;
-
-  if (!li_at || !searchTerm || !location) {
-    return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
-  }
-
+(async (searchTerm, location, liAtCookie, maxJobs) => {
   const browser = await puppeteer.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -156,13 +113,10 @@ module.exports = async (req, res) => {
   const page = await browser.newPage();
 
   try {
-    // Usando a função getJobListings
-    const jobs = await getJobListings(page, searchTerm, location, li_at);
-    res.status(200).send({ jobs });
+    await getJobListings(page, searchTerm, location, liAtCookie, parseInt(maxJobs, 10));
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
-    res.status(500).send({ error: error.message });
   } finally {
     await browser.close();
   }
-};
+})(process.argv[2], process.argv[3], process.argv[4], process.argv[5]);
