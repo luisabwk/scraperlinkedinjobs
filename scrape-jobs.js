@@ -96,6 +96,9 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
   }
 }
 
+// Exporta a função para que possa ser usada em outros arquivos
+module.exports = { getJobListings };
+
 (async (searchTerm, location, liAtCookie, maxJobs) => {
   const browser = await puppeteer.launch({
     headless: true,
