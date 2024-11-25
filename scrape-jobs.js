@@ -108,4 +108,14 @@ async function getJobListings(page, searchTerm, location, li_at) {
       })
       .catch((error) => {
         console.error(
-          "[ERROR] Err
+          "[ERROR] Erro ao acionar o webhook:",
+          error.response?.status,
+          error.response?.data
+        );
+      });
+  } catch (error) {
+    console.error("[ERROR] Erro ao carregar a página inicial:", error);
+  }
+}
+
+module.exports = getJobListings;
