@@ -25,16 +25,6 @@ async function getJobListings(page, searchTerm, location, li_at) {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
   );
 
-  // Adiciona headers adicionais para simular um usuário real
-  await page.setExtraHTTPHeaders({
-    "accept-language": "en-US,en;q=0.9",
-    "sec-fetch-user": "?1",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-dest": "document",
-    "upgrade-insecure-requests": "1",
-  });
-
   try {
     // Acessa a URL inicial para obter informações gerais, como total de páginas
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -71,29 +61,34 @@ async function getJobListings(page, searchTerm, location, li_at) {
           document.querySelectorAll(".jobs-search-results__list-item")
         );
 
+        // Se não encontrar elementos de vagas, logar aviso
+        if (jobElements.length === 0) {
+          console.warn("[WARN] Nenhum elemento de vaga encontrado na página atual.");
+        }
+
         return jobElements.map((job) => {
           const title = job
             .querySelector(".job-card-list__title")
             ?.innerText.trim()
-            .replace(/\n/g, ' ') || "";
+            .replace(/\n/g, ' ') || "Título não encontrado";
 
           const company = job
             .querySelector(".job-card-container__primary-description")
-            ?.innerText.trim() || "";
+            ?.innerText.trim() || "Empresa não encontrada";
 
           const location = job
             .querySelector(".job-card-container__metadata-item")
-            ?.innerText.trim() || "";
+            ?.innerText.trim() || "Localização não encontrada";
 
           const format = job
             .querySelector(".job-card-container__workplace-type")
-            ?.innerText.trim() || "";
+            ?.innerText.trim() || "Formato não encontrado";
 
           const cargahoraria = job
             .querySelector(".job-card-container__work-schedule")
-            ?.innerText.trim() || "";
+            ?.innerText.trim() || "Carga horária não encontrada";
 
-          const link = job.querySelector("a")?.href || "";
+          const link = job.querySelector("a")?.href || "Link não encontrado";
 
           return {
             vaga: title,
@@ -105,6 +100,9 @@ async function getJobListings(page, searchTerm, location, li_at) {
           };
         });
       });
+
+      // Logando número de vagas coletadas na página atual
+      console.info(`[INFO] Número de vagas coletadas na página ${currentPage}: ${jobsResult.length}`);
 
       // Adiciona os resultados ao array geral, removendo duplicados com base no ID do link
       jobsResult.forEach((job) => {
@@ -160,7 +158,7 @@ module.exports = async (req, res) => {
   try {
     // Usando a função getJobListings
     const jobs = await getJobListings(page, searchTerm, location, li_at);
-    res.status(200).send(jobs);
+    res.status(200).send({ jobs });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
     res.status(500).send({ error: error.message });
