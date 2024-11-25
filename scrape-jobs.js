@@ -89,18 +89,10 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
-    console.log("[INFO] Enviando dados para o webhook...");
-
-    await axios
-      .post(process.env.WEBHOOK_URL, { jobs: allJobs }) // Usar variável de ambiente para o webhook
-      .then((response) => {
-        console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
-      })
-      .catch((error) => {
-        console.error("[ERROR] Erro ao acionar o webhook:", error.response?.status, error.response?.data);
-      });
+    return allJobs;
   } catch (error) {
     console.error("[ERROR] Erro ao carregar a página inicial:", error);
+    throw error;
   }
 }
 
@@ -113,7 +105,8 @@ async function getJobListings(page, searchTerm, location, liAtCookie, maxJobs) {
   const page = await browser.newPage();
 
   try {
-    await getJobListings(page, searchTerm, location, liAtCookie, parseInt(maxJobs, 10));
+    const jobs = await getJobListings(page, searchTerm, location, liAtCookie, parseInt(maxJobs, 10));
+    console.log("[INFO] Relação de vagas extraídas:", jobs);
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
   } finally {
