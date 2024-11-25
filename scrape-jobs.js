@@ -64,7 +64,10 @@ app.post("/scrape", async (req, res) => {
       console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
+      console.log(`[INFO] Acessando URL da página: ${pageURL}`);
       await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+      await page.waitForTimeout(2000); // Espera para garantir que a página foi carregada corretamente
 
       const jobsResult = await page.evaluate(() => {
         const jobElements = Array.from(
