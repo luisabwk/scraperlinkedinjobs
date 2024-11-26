@@ -43,46 +43,24 @@ async function scrapeJobs(searchTerm, location, li_at) {
     let totalPages = 1;
     try {
       totalPages = await page.$eval(
-        ".artdeco-pagination__pages li:last-child button",
-        (el) => parseInt(el.innerText.trim())
+        ".results-context-header__job-count",
+        (el) => Math.ceil(parseInt(el.innerText.replace(/[^\d]/g, "")) / 25)
       );
     } catch (error) {
-      console.warn("[WARN] Não foi possível obter o número total de páginas, continuando com uma página.");
+      console.log("[INFO] Não foi possível determinar o número total de páginas. Continuando com uma página.");
     }
 
-    console.info(`[INFO] Número total de páginas: ${totalPages}`);
-
-    for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
-      console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
-
-      // Navegar para a página específica
-      const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
-      await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 60000 });
-
-      // Captura os dados das vagas na página atual
+    while (currentPage <= totalPages) {
+      console.log(`[INFO] Coletando dados da página ${currentPage} de ${totalPages}`);
       const jobsResult = await page.evaluate(() => {
-        const jobElements = Array.from(
-          document.querySelectorAll(".jobs-search-results__list-item")
-        );
-
-        return jobElements.map((job) => {
-          const title = job
-            .querySelector(".job-card-list__title")
-            ?.innerText.trim()
-            .replace(/\n/g, " "); // Remover quebras de linha
-
-          const company = job
-            .querySelector(".job-card-container__primary-description")
-            ?.innerText.trim();
-
-          const location = job
-            .querySelector(".job-card-container__metadata-item")
-            ?.innerText.trim();
-
-          const link = job.querySelector("a")?.href;
+        return Array.from(document.querySelectorAll(".result-card")).map((job) => {
+          const title = job.querySelector(".result-card__title")?.innerText;
+          const company = job.querySelector(".result-card__subtitle")?.innerText;
+          const location = job.querySelector(".result-card__meta")?.innerText;
+          const link = job.querySelector("a.result-card__full-card-link")?.href;
 
           return {
-            vaga: title || "",
+            titulo: title || "",
             empresa: company || "",
             local: location || "",
             formato: "", // Aqui é um campo adicional que você pediu
@@ -106,6 +84,13 @@ async function scrapeJobs(searchTerm, location, li_at) {
       });
 
       console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
+
+      // Verifica se há uma próxima página e navega para ela
+      if (currentPage < totalPages) {
+        const nextPageUrl = `${baseUrl}&start=${currentPage * 25}`;
+        await page.goto(nextPageUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+      }
+      currentPage++;
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
