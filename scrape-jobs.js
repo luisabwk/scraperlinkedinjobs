@@ -1,22 +1,25 @@
 const puppeteer = require("puppeteer");
 const axios = require("axios");
 
-async function getJobListings(page, searchTerm, location, li_at) {
+async function getJobListings(browser, searchTerm, location, li_at) {
   let allJobs = [];
   const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
     searchTerm
-  )}&location=${encodeURIComponent(
-    location
-  )}&geoId=106057199&f_TPR=r86400`;
+  )}&location=${encodeURIComponent(location)}&geoId=106057199&f_TPR=r86400`;
 
   console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
 
-  // Define o cookie `li_at` com o valor fornecido
-  await page.setCookie({
-    name: "li_at",
-    value: li_at,
-    domain: ".linkedin.com",
-  });
+  const page = await browser.newPage();
+
+  // Definir o cookie `li_at` com o valor fornecido
+  const cookies = [
+    {
+      name: "li_at",
+      value: li_at,
+      domain: ".linkedin.com",
+    },
+  ];
+  await page.setCookie(...cookies);
 
   // Define o User-Agent para simular um navegador comum
   await page.setUserAgent(
@@ -42,9 +45,7 @@ async function getJobListings(page, searchTerm, location, li_at) {
 
     // Iterar sobre cada página de 1 até o total de páginas
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
-      console.info(
-        `[INFO] Scraping página ${currentPage} de ${totalPages}...`
-      );
+      console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
       // Navegar para a página específica
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
@@ -106,6 +107,8 @@ async function getJobListings(page, searchTerm, location, li_at) {
   } catch (error) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
     throw new Error("Erro durante o scraping.");
+  } finally {
+    await page.close();
   }
 }
 
@@ -114,8 +117,6 @@ async function getJobListings(page, searchTerm, location, li_at) {
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
 
-  const page = await browser.newPage();
-
   try {
     // Defina as variáveis conforme necessário
     const searchTerm = "growth marketing";
@@ -123,7 +124,7 @@ async function getJobListings(page, searchTerm, location, li_at) {
     const li_at = "SEU_COOKIE_AQUI";
 
     // Usando a função getJobListings
-    const jobs = await getJobListings(page, searchTerm, location, li_at);
+    const jobs = await getJobListings(browser, searchTerm, location, li_at);
 
     // Exemplo de como você pode manipular as vagas obtidas
     console.log(jobs);
