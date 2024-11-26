@@ -5,13 +5,15 @@ async function getJobListings(browser, searchTerm, location, li_at) {
   let allJobs = [];
   const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
     searchTerm
-  )}&location=${encodeURIComponent(location)}&geoId=106057199&f_TPR=r86400`;
+  )}&location=${encodeURIComponent(
+    location
+  )}&geoId=106057199&f_TPR=r86400`;
 
   console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
 
   const page = await browser.newPage();
 
-  // Definir o cookie `li_at` com o valor fornecido
+  // Define o cookie `li_at` com o valor fornecido
   const cookies = [
     {
       name: "li_at",
@@ -45,7 +47,9 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
     // Iterar sobre cada página de 1 até o total de páginas
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
-      console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
+      console.info(
+        `[INFO] Scraping página ${currentPage} de ${totalPages}...`
+      );
 
       // Navegar para a página específica
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
