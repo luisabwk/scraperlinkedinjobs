@@ -14,14 +14,11 @@ async function getJobListings(browser, searchTerm, location, li_at) {
   const page = await browser.newPage();
 
   // Define o cookie `li_at` com o valor fornecido
-  const cookies = [
-    {
-      name: "li_at",
-      value: li_at,
-      domain: ".linkedin.com",
-    },
-  ];
-  await page.setCookie(...cookies);
+  await page.setCookie({
+    name: "li_at",
+    value: li_at,
+    domain: ".linkedin.com",
+  });
 
   // Define o User-Agent para simular um navegador comum
   await page.setUserAgent(
@@ -128,14 +125,15 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
 (async () => {
   const browser = await puppeteer.launch({
+    headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
 
   try {
     // Defina as variáveis conforme necessário
-    const searchTerm = searchTerm;
-    const location = location;
-    const li_at = li_at;
+    const searchTerm = "growth marketing";
+    const location = "Brasil";
+    const li_at = "SEU_COOKIE_AQUI";
 
     // Usando a função getJobListings
     const jobs = await getJobListings(browser, searchTerm, location, li_at);
