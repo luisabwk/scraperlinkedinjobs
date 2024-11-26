@@ -80,10 +80,20 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
           const link = job.querySelector("a")?.href;
 
+          const format = job
+            .querySelector(".job-card-container__workplace-type")
+            ?.innerText.trim();
+
+          const cargahoraria = job
+            .querySelector(".job-card-container__employment-status")
+            ?.innerText.trim();
+
           return {
             vaga: title || "",
             empresa: company || "",
             local: location || "",
+            formato: format || "",
+            cargahoraria: cargahoraria || "",
             link: link || "",
           };
         });
@@ -123,9 +133,9 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
   try {
     // Defina as variáveis conforme necessário
-    const searchTerm = "growth marketing";
-    const location = "Brasil";
-    const li_at = "SEU_COOKIE_AQUI";
+    const searchTerm = searchTerm;
+    const location = location;
+    const li_at = li_at;
 
     // Usando a função getJobListings
     const jobs = await getJobListings(browser, searchTerm, location, li_at);
