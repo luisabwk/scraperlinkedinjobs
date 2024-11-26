@@ -1,35 +1,57 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
-const { getJobListings } = require('./scrape-jobs'); // Importa a função de scraping do arquivo scrape-jobs.js
+const express = require("express");
+const puppeteer = require("puppeteer");
+const getJobListings = require("./scrape-jobs"); // Importe a função do arquivo scrape-jobs.js
 
 const app = express();
-
 app.use(express.json());
 
-app.post('/scrape-jobs', async (req, res) => {
-  const { searchTerm, location, liAtCookie, maxJobs } = req.body;
+// Endpoint da API para scraping
+app.post("/scrape-jobs", async (req, res) => {
+  const { li_at, searchTerm, location, webhook } = req.body;
 
-  if (!searchTerm || !location || !liAtCookie || !maxJobs) {
-    return res.status(400).send('Todos os campos (searchTerm, location, liAtCookie, maxJobs) são obrigatórios.');
+  if (!li_at || !searchTerm || !location) {
+    return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
 
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+
+  const page = await browser.newPage();
+
   try {
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    // Usando a função getJobListings
+    const jobs = await getJobListings(page, searchTerm, location, li_at);
 
-    const page = await browser.newPage();
-    const jobs = await getJobListings(page, searchTerm, location, liAtCookie, parseInt(maxJobs, 10));
+    // Enviar os resultados para o webhook se ele for fornecido
+    if (webhook) {
+      console.log("[INFO] Enviando dados para o webhook...");
+      await axios
+        .post(webhook, { jobs })
+        .then((response) => {
+          console.log("[SUCCESS] Webhook acionado com sucesso:", response.status);
+        })
+        .catch((error) => {
+          console.error(
+            "[ERROR] Erro ao acionar o webhook:",
+            error.response?.status,
+            error.response?.data
+          );
+        });
+    }
 
-    await browser.close();
-    res.status(200).json(jobs); // Retorna a lista de vagas extraídas na resposta
+    res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
   } catch (error) {
-    res.status(500).send(`Erro ao realizar scraping: ${error.message}`);
+    console.error("[ERROR] Falha durante a requisição:", error.message);
+    res.status(500).send({ error: error.message });
+  } finally {
+    await browser.close();
   }
 });
 
+// Inicializar o servidor na porta 3000
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
