@@ -17,23 +17,25 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
   const page = await browser.newPage();
 
-  // Define o cookie `li_at` com o valor fornecido
-  const cookies = [
-    {
-      name: "li_at",
-      value: li_at,
-      domain: ".linkedin.com",
-    },
-  ];
-  await page.setCookie(...cookies);
-
-  // Define o User-Agent para simular um navegador comum
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
-  );
-
   try {
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    // Define o cookie `li_at` com o valor fornecido
+    const cookies = [
+      {
+        name: "li_at",
+        value: li_at,
+        domain: ".linkedin.com",
+      },
+    ];
+    await page.setCookie(...cookies);
+    console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
+
+    // Define o User-Agent para simular um navegador comum
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
+    );
+
+    await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 120000 });
+    console.log("[INFO] Página inicial acessada com sucesso.");
 
     // Descobrir o número total de páginas
     let totalPages = 1;
@@ -58,8 +60,8 @@ async function getJobListings(browser, searchTerm, location, li_at) {
       // Navegar para a página específica
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
       await page.goto(pageURL, {
-        waitUntil: "domcontentloaded",
-        timeout: 90000,
+        waitUntil: "networkidle2",
+        timeout: 120000,
       });
 
       // Captura os dados das vagas na página atual
@@ -135,7 +137,13 @@ async function getJobListings(browser, searchTerm, location, li_at) {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+      ],
     });
 
     // Defina as variáveis conforme necessário
