@@ -33,7 +33,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
   );
 
   try {
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
 
     // Descobrir o número total de páginas
     let totalPages = 1;
@@ -59,7 +59,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
       await page.goto(pageURL, {
         waitUntil: "domcontentloaded",
-        timeout: 60000,
+        timeout: 90000,
       });
 
       // Captura os dados das vagas na página atual
