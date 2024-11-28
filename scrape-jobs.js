@@ -11,7 +11,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
   console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
 
-  if (!browser) {
+  if (!browser || typeof browser.newPage !== "function") {
     throw new Error("Navegador Puppeteer não inicializado corretamente.");
   }
 
@@ -131,12 +131,13 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 }
 
 (async () => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
-
+  let browser;
   try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
     // Defina as variáveis conforme necessário
     const searchTerm = "growth marketing";
     const location = "Brasil";
@@ -150,7 +151,9 @@ async function getJobListings(browser, searchTerm, location, li_at) {
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
   } finally {
-    await browser.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 })();
 
