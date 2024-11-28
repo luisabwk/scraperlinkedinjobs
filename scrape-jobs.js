@@ -11,6 +11,10 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
   console.log(`[INFO] Acessando a URL inicial: ${baseUrl}`);
 
+  if (!browser) {
+    throw new Error("Navegador Puppeteer não inicializado corretamente.");
+  }
+
   const page = await browser.newPage();
 
   // Define o cookie `li_at` com o valor fornecido
