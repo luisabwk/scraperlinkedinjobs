@@ -118,7 +118,6 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
           let location = "";
           let formato = "";
-          let cargahoraria = "";
 
           if (locationData) {
             // Extrair 'formato' de dentro dos parênteses
@@ -137,7 +136,6 @@ async function getJobListings(browser, searchTerm, location, li_at) {
             empresa: company || "",
             local: location || "",
             formato: formato || "",
-            cargahoraria: cargahoraria || "",
             link: link || "",
           };
         });
