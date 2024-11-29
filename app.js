@@ -112,7 +112,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
             .querySelector(".artdeco-entity-lockup__subtitle")
             ?.innerText.trim();
 
-           const locationData = job
+          const locationData = job
             .querySelector(".job-card-container__metadata-item")
             ?.innerText.trim();
 
@@ -122,17 +122,12 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
           if (locationData) {
             // Extrair 'formato' de dentro dos parênteses
-            const formatMatch = locationData.match(/\((.*?)\)/);
+            const formatMatch = locationData.match(/\(([^)]+)\)/);
             if (formatMatch) {
               formato = formatMatch[1].trim();
             }
             // Remover 'formato' e definir o restante como 'location'
             location = locationData.replace(/\(.*?\)/, "").trim();
-            // Se houver informação adicional sobre carga horária, tratar aqui
-            const cargaMatch = locationData.match(/\b(Tempo integral|Meio período)\b/);
-            if (cargaMatch) {
-              cargahoraria = cargaMatch[0].trim();
-            }
           }
 
           const link = job.querySelector("a")?.href;
