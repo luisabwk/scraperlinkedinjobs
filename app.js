@@ -109,7 +109,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
             .replace(/\n/g, " "); // Remover quebras de linha
 
           const company = job
-            .querySelector(".job-card-container__primary-description")
+            .querySelector(".artdeco-entity-lockup__subtitle")
             ?.innerText.trim();
 
           const location = job
