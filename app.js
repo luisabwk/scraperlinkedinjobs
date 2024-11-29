@@ -113,24 +113,27 @@ async function getJobListings(browser, searchTerm, location, li_at) {
             ?.innerText.trim();
 
           const location = job
-            .querySelector(".tvm__text tvm__text--low-emphasis")
+            .querySelector(".job-details-jobs-unified-top-card__primary-description-container")
             ?.innerText.trim();
 
           const link = job.querySelector("a")?.href;
 
           const format = job
-            .querySelector(".job-card-container__workplace-type")
+            .querySelector(".flex-shrink-zero mr2 t-black--light")
             ?.innerText.trim();
 
           const cargahoraria = job
-            .querySelector(".job-card-container__employment-status")
+            .querySelector(".job-details-jobs-unified-top-card__job-insight-view-model-secondary")
             ?.innerText.trim();
+
+          const experiencia = job.querySelector(".job-details-jobs-unified-top-card__job-insight-view-model-secondary")?.innerText.trim();
 
           return {
             vaga: title || "",
             empresa: company || "",
             local: location || "",
             formato: format || "",
+            experiencia: format || "",
             cargahoraria: cargahoraria || "",
             link: link || "",
           };
