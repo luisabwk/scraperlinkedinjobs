@@ -113,7 +113,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
             ?.innerText.trim();
 
           const location = job
-            .querySelector(".job-card-container__metadata-item")
+            .querySelector(".job-details-jobs-unified-top-card__primary-description-container")
             ?.innerText.trim();
 
           const link = job.querySelector("a")?.href;
