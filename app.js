@@ -34,31 +34,25 @@ async function getJobListings(browser, searchTerm, location, li_at) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
-    // Tentar acessar a página com controle de redirecionamentos
-    const maxRedirects = 5;
-    let redirectCount = 0;
-    let response;
+    // Acessar a URL base e verificar se conseguimos carregar os resultados
+    try {
+      const response = await page.goto(baseUrl, {
+        waitUntil: "networkidle2",
+        timeout: 120000,
+      });
 
-    while (redirectCount < maxRedirects) {
-      response = await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 120000 });
-      const status = response.status();
-
-      if (status >= 300 && status < 400) {
-        // Se for um redirecionamento, aumentar o contador e tentar novamente
-        const redirectUrl = response.headers().location;
-        console.log(`[INFO] Redirecionado para: ${redirectUrl}`);
-        await page.goto(redirectUrl, { waitUntil: "networkidle2", timeout: 120000 });
-        redirectCount++;
-      } else {
-        break;
+      // Verificar se foi redirecionado para a página de login
+      if (await page.$("input#session_key")) {
+        throw new Error(
+          "Página de login detectada. O cookie 'li_at' pode estar inválido ou expirado."
+        );
       }
-    }
 
-    if (redirectCount >= maxRedirects) {
-      throw new Error("Too many redirects. Verifique o cookie 'li_at' ou a URL de destino.");
+      console.log("[INFO] Página inicial acessada com sucesso.");
+    } catch (error) {
+      console.error("[ERROR] Erro ao acessar a página inicial:", error);
+      throw new Error("Erro durante o acesso à página inicial.");
     }
-
-    console.log("[INFO] Página inicial acessada com sucesso.");
 
     // Descobrir o número total de páginas
     let totalPages = 1;
@@ -86,12 +80,12 @@ async function getJobListings(browser, searchTerm, location, li_at) {
         timeout: 120000,
       });
 
-      // Aguarda os resultados estarem disponíveis na página
+      // Aguardar que os resultados de vagas estejam visíveis na página
       try {
         await page.waitForSelector(".jobs-search-results__list-item", { timeout: 30000 });
       } catch (error) {
         console.warn(`[WARN] Nenhum resultado encontrado na página ${currentPage}. Continuando...`);
-        continue; // Passa para a próxima página, se não houver resultados nesta
+        continue; // Se não houver resultados nesta página, passa para a próxima página
       }
 
       // Captura os dados das vagas na página atual
@@ -156,7 +150,6 @@ async function getJobListings(browser, searchTerm, location, li_at) {
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
-
     return allJobs;
   } catch (error) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
