@@ -1,5 +1,9 @@
 const puppeteer = require("puppeteer");
+const express = require("express");
 const axios = require("axios");
+
+const app = express();
+app.use(express.json());
 
 async function getJobListings(browser, searchTerm, location, li_at) {
   let allJobs = [];
@@ -40,14 +44,12 @@ async function getJobListings(browser, searchTerm, location, li_at) {
     let response;
 
     while (redirectCount < maxRedirects) {
-      response = await page.goto(baseUrl, { waitUntil: "networkidle2", timeout: 120000 });
-      const status = response.status();
-
-      if (status >= 300 && status < 400) {
+      response = await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
+      if (response && response.status() >= 300 && response.status() < 400) {
         // Se for um redirecionamento, aumentar o contador e tentar novamente
         const redirectUrl = response.headers().location;
         console.log(`[INFO] Redirecionado para: ${redirectUrl}`);
-        await page.goto(redirectUrl, { waitUntil: "networkidle2", timeout: 120000 });
+        await page.goto(redirectUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
         redirectCount++;
       } else {
         break;
@@ -59,6 +61,10 @@ async function getJobListings(browser, searchTerm, location, li_at) {
     }
 
     console.log("[INFO] Página inicial acessada com sucesso.");
+
+    // Verificar o conteúdo da página para depuração
+    const pageContent = await page.content();
+    console.log("[DEBUG] HTML da página carregada: ", pageContent.slice(0, 500)); // Mostra os primeiros 500 caracteres do HTML
 
     // Descobrir o número total de páginas
     let totalPages = 1;
@@ -88,7 +94,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
         timeout: 120000,
       });
 
-      await page.waitForTimeout(3000); // Espera extra para garantir que os elementos sejam carregados
+      await page.waitForTimeout(5000); // Aumentar a espera para garantir que os elementos sejam carregados
 
       // Captura os dados das vagas na página atual
       const jobsResult = await page.evaluate(() => {
@@ -158,7 +164,13 @@ async function getJobListings(browser, searchTerm, location, li_at) {
   }
 }
 
-(async () => {
+app.post("/scrape-jobs", async (req, res) => {
+  const { searchTerm, location, li_at } = req.body;
+
+  if (!li_at || !searchTerm || !location) {
+    return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
+  }
+
   let browser;
   try {
     browser = await puppeteer.launch({
@@ -172,23 +184,22 @@ async function getJobListings(browser, searchTerm, location, li_at) {
       ],
     });
 
-    // Defina as variáveis conforme necessário
-    const searchTerm = "growth marketing";
-    const location = "Brasil";
-    const li_at = "SEU_COOKIE_AQUI";
-
-    // Usando a função getJobListings
     const jobs = await getJobListings(browser, searchTerm, location, li_at);
-
-    // Exemplo de como você pode manipular as vagas obtidas
-    console.log(jobs);
+    res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
+    res.status(500).send({ error: error.message });
   } finally {
     if (browser) {
       await browser.close();
     }
   }
-})();
+});
+
+// Inicializar o servidor na porta 3000
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
 
 module.exports = getJobListings;
