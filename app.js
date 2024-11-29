@@ -104,7 +104,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
         return jobElements.map((job) => {
           const title = job
-            .querySelector(".job-card-list__title")
+            .querySelector(".job-card-list__title--link")
             ?.innerText.trim()
             .replace(/\n/g, " "); // Remover quebras de linha
 
