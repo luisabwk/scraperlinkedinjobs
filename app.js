@@ -46,9 +46,9 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     let totalPages = 1;
     try {
       await page.waitForSelector(".artdeco-pagination__pages.artdeco-pagination__pages--number", { timeout: 20000 });
-      totalPages = await page.$$eval(
-        ".artdeco-pagination__pages.artdeco-pagination__pages--number li button",
-        (buttons) => Math.max(...buttons.map((el) => parseInt(el.innerText.trim())).filter(n => !isNaN(n)))
+      totalPages = await page.$eval(
+        ".artdeco-pagination__pages.artdeco-pagination__pages--number li:last-child button",
+        (el) => parseInt(el.innerText.trim())
       );
       console.info(`[INFO] Número total de páginas: ${totalPages}`);
     } catch (error) {
