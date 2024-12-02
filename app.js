@@ -5,7 +5,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-async function getJobListings(browser, searchTerm, location, li_at) {
+async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
   let allJobs = [];
   const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
     searchTerm
@@ -131,11 +131,17 @@ async function getJobListings(browser, searchTerm, location, li_at) {
       });
 
       console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
+
+      // Verificar se o número máximo de vagas foi alcançado
+      if (allJobs.length >= maxJobs) {
+        console.info(`[INFO] Número máximo de vagas (${maxJobs}) alcançado.`);
+        break;
+      }
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
 
-    return allJobs;
+    return allJobs.slice(0, maxJobs);
   } catch (error) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
     throw new Error("Erro durante o scraping.");
@@ -145,7 +151,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 }
 
 app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location, li_at } = req.body;
+  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
@@ -164,7 +170,7 @@ app.post("/scrape-jobs", async (req, res) => {
       ],
     });
 
-    const jobs = await getJobListings(browser, searchTerm, location, li_at);
+    const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
     res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
