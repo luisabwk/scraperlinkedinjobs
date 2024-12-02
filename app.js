@@ -131,19 +131,11 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
           const link = job.querySelector("a")?.href;
 
-          const cargahoraria = job
-            .querySelector(".job-details-jobs-unified-top-card__job-insight-view-model-secondary")
-            ?.innerText.trim();
-
-          const experiencia = job.querySelector(".job-details-jobs-unified-top-card__job-insight-view-model-secondary")?.innerText.trim();
-
           return {
             vaga: title || "",
             empresa: company || "",
             local: location || "",
             formato: formato || "",
-            experiencia: experiencia || "",
-            cargahoraria: cargahoraria || "",
             link: link || "",
           };
         });
