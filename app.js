@@ -5,7 +5,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-async function getJobListings(browser, searchTerm, location, li_at) {
+async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
   let allJobs = [];
   const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
     searchTerm
@@ -62,10 +62,6 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
     console.log("[INFO] Página inicial acessada com sucesso.");
 
-    // Verificar o conteúdo da página para depuração
-    const pageContent = await page.content();
-    console.log("[DEBUG] HTML da página carregada: ", pageContent.slice(0, 500)); // Mostra os primeiros 500 caracteres do HTML
-
     // Descobrir o número total de páginas
     let totalPages = 1;
     try {
@@ -83,9 +79,7 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
     // Iterar sobre cada página de 1 até o total de páginas
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
-      console.info(
-        `[INFO] Scraping página ${currentPage} de ${totalPages}...`
-      );
+      console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
       // Navegar para a página específica
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
@@ -104,12 +98,12 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 
         return jobElements.map((job) => {
           const title = job
-            .querySelector(".job-card-list__title--link")
+            .querySelector(".job-card-list__title")
             ?.innerText.trim()
             .replace(/\n/g, " "); // Remover quebras de linha
 
           const company = job
-            .querySelector(".artdeco-entity-lockup__subtitle")
+            .querySelector(".job-card-container__primary-description")
             ?.innerText.trim();
 
           const locationData = job
@@ -120,13 +114,12 @@ async function getJobListings(browser, searchTerm, location, li_at) {
           let formato = "";
 
           if (locationData) {
-            // Extrair 'formato' de dentro dos parênteses
-            const formatMatch = locationData.match(/\(([^)]+)\)/);
-            if (formatMatch) {
-              formato = formatMatch[1].trim();
+            // Dividir locationData usando parênteses para separar a localização do formato
+            const parts = locationData.split("(");
+            location = parts[0].trim(); // Parte antes do parêntese
+            if (parts[1]) {
+              formato = parts[1].replace(")", "").trim(); // Parte dentro dos parênteses
             }
-            // Remover 'formato' e definir o restante como 'location'
-            location = locationData.replace(/\(.*?\)/, "").trim();
           }
 
           const link = job.querySelector("a")?.href;
@@ -155,11 +148,17 @@ async function getJobListings(browser, searchTerm, location, li_at) {
       });
 
       console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
+
+      // Verificar se já coletamos o número máximo de vagas solicitado
+      if (allJobs.length >= maxJobs) {
+        console.log(`[INFO] Número máximo de vagas (${maxJobs}) alcançado.`);
+        break;
+      }
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
 
-    return allJobs;
+    return allJobs.slice(0, maxJobs); // Retorna apenas o número máximo de vagas solicitado
   } catch (error) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
     throw new Error("Erro durante o scraping.");
@@ -169,11 +168,13 @@ async function getJobListings(browser, searchTerm, location, li_at) {
 }
 
 app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location, li_at } = req.body;
+  const { searchTerm, location, li_at, maxJobs } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
+
+  const maxJobsCount = maxJobs || 50; // Define um limite padrão de 50 vagas, caso não seja especificado
 
   let browser;
   try {
@@ -188,7 +189,7 @@ app.post("/scrape-jobs", async (req, res) => {
       ],
     });
 
-    const jobs = await getJobListings(browser, searchTerm, location, li_at);
+    const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobsCount);
     res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
