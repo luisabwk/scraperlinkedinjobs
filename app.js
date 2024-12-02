@@ -112,15 +112,24 @@ async function getJobListings(browser, searchTerm, location, li_at) {
             .querySelector(".artdeco-entity-lockup__subtitle")
             ?.innerText.trim();
 
-          const location = job
+          const locationData = job
             .querySelector(".job-card-container__metadata-wrapper")
             ?.innerText.trim();
 
-          const link = job.querySelector("a")?.href;
+          let location = "";
+          let formato = "";
 
-          const format = job
-            .querySelector(".flex-shrink-zero mr2 t-black--light")
-            ?.innerText.trim();
+          if (locationData) {
+            // Usando expressão regular para extrair a parte entre parênteses como formato
+            const formatMatch = locationData.match(/\(([^)]+)\)/);
+            if (formatMatch) {
+              formato = formatMatch[1].trim(); // Extraímos o que está dentro dos parênteses
+            }
+            // Remover a parte dos parênteses e definir o restante como localização
+            location = locationData.replace(/\(.*?\)/, "").trim();
+          }
+
+          const link = job.querySelector("a")?.href;
 
           const cargahoraria = job
             .querySelector(".job-details-jobs-unified-top-card__job-insight-view-model-secondary")
@@ -132,8 +141,8 @@ async function getJobListings(browser, searchTerm, location, li_at) {
             vaga: title || "",
             empresa: company || "",
             local: location || "",
-            formato: format || "",
-            experiencia: format || "",
+            formato: formato || "",
+            experiencia: experiencia || "",
             cargahoraria: cargahoraria || "",
             link: link || "",
           };
