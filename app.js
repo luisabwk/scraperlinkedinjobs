@@ -57,7 +57,7 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
       );
     }
 
-    // Iterar sobre cada página de 1 até o total de páginas
+    // Iterar sobre cada página de 1 até o total de páginas ou até atingir maxJobs
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
       console.info(
         `[INFO] Scraping página ${currentPage} de ${totalPages}...`
