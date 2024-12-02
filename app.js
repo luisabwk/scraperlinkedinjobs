@@ -5,7 +5,7 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
+async function getJobListings(browser, searchTerm, location, li_at) {
   let allJobs = [];
   const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(
     searchTerm
@@ -62,6 +62,10 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
 
     console.log("[INFO] Página inicial acessada com sucesso.");
 
+    // Verificar o conteúdo da página para depuração
+    const pageContent = await page.content();
+    console.log("[DEBUG] HTML da página carregada: ", pageContent.slice(0, 500)); // Mostra os primeiros 500 caracteres do HTML
+
     // Descobrir o número total de páginas
     let totalPages = 1;
     try {
@@ -79,7 +83,9 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
 
     // Iterar sobre cada página de 1 até o total de páginas
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
-      console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
+      console.info(
+        `[INFO] Scraping página ${currentPage} de ${totalPages}...`
+      );
 
       // Navegar para a página específica
       const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
@@ -98,37 +104,37 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
 
         return jobElements.map((job) => {
           const title = job
-            .querySelector(".job-card-list__title")
+            .querySelector(".job-card-list__title--link")
             ?.innerText.trim()
             .replace(/\n/g, " "); // Remover quebras de linha
 
           const company = job
-            .querySelector(".job-card-container__primary-description")
+            .querySelector(".artdeco-entity-lockup__subtitle")
             ?.innerText.trim();
 
-          const locationData = job
-            .querySelector(".job-card-container__metadata-item")
+          const location = job
+            .querySelector(".job-card-container__metadata-wrapper")
             ?.innerText.trim();
-
-          let location = "";
-          let formato = "";
-
-          if (locationData) {
-            // Dividir locationData usando parênteses para separar a localização do formato
-            const parts = locationData.split("(");
-            location = parts[0].trim(); // Parte antes do parêntese
-            if (parts[1]) {
-              formato = parts[1].replace(")", "").trim(); // Parte dentro dos parênteses
-            }
-          }
 
           const link = job.querySelector("a")?.href;
+
+          const format = job
+            .querySelector(".flex-shrink-zero mr2 t-black--light")
+            ?.innerText.trim();
+
+          const cargahoraria = job
+            .querySelector(".job-details-jobs-unified-top-card__job-insight-view-model-secondary")
+            ?.innerText.trim();
+
+          const experiencia = job.querySelector(".job-details-jobs-unified-top-card__job-insight-view-model-secondary")?.innerText.trim();
 
           return {
             vaga: title || "",
             empresa: company || "",
             local: location || "",
-            formato: formato || "",
+            formato: format || "",
+            experiencia: format || "",
+            cargahoraria: cargahoraria || "",
             link: link || "",
           };
         });
@@ -148,17 +154,11 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
       });
 
       console.log(`[INFO] Total de vagas coletadas até agora: ${allJobs.length}`);
-
-      // Verificar se já coletamos o número máximo de vagas solicitado
-      if (allJobs.length >= maxJobs) {
-        console.log(`[INFO] Número máximo de vagas (${maxJobs}) alcançado.`);
-        break;
-      }
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
 
-    return allJobs.slice(0, maxJobs); // Retorna apenas o número máximo de vagas solicitado
+    return allJobs;
   } catch (error) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
     throw new Error("Erro durante o scraping.");
@@ -168,13 +168,11 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
 }
 
 app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location, li_at, maxJobs } = req.body;
+  const { searchTerm, location, li_at } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
-
-  const maxJobsCount = maxJobs || 50; // Define um limite padrão de 50 vagas, caso não seja especificado
 
   let browser;
   try {
@@ -189,7 +187,7 @@ app.post("/scrape-jobs", async (req, res) => {
       ],
     });
 
-    const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobsCount);
+    const jobs = await getJobListings(browser, searchTerm, location, li_at);
     res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
