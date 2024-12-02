@@ -38,40 +38,16 @@ async function getJobListings(browser, searchTerm, location, li_at) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
-    // Tentar acessar a página com controle de redirecionamentos
-    const maxRedirects = 5;
-    let redirectCount = 0;
-    let response;
-
-    while (redirectCount < maxRedirects) {
-      response = await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
-      if (response && response.status() >= 300 && response.status() < 400) {
-        // Se for um redirecionamento, aumentar o contador e tentar novamente
-        const redirectUrl = response.headers().location;
-        console.log(`[INFO] Redirecionado para: ${redirectUrl}`);
-        await page.goto(redirectUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
-        redirectCount++;
-      } else {
-        break;
-      }
-    }
-
-    if (redirectCount >= maxRedirects) {
-      throw new Error("Too many redirects. Verifique o cookie 'li_at' ou a URL de destino.");
-    }
-
+    // Acessar a URL inicial
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
     console.log("[INFO] Página inicial acessada com sucesso.");
-
-    // Verificar o conteúdo da página para depuração
-    const pageContent = await page.content();
-    console.log("[DEBUG] HTML da página carregada: ", pageContent.slice(0, 500)); // Mostra os primeiros 500 caracteres do HTML
 
     // Descobrir o número total de páginas
     let totalPages = 1;
     try {
-      await page.waitForSelector(".artdeco-pagination__pages", { timeout: 20000 });
+      await page.waitForSelector(".artdeco-pagination__pages.artdeco-pagination__pages--number", { timeout: 20000 });
       totalPages = await page.$eval(
-        ".artdeco-pagination__pages li:last-child button",
+        ".artdeco-pagination__pages.artdeco-pagination__pages--number li:last-child button",
         (el) => parseInt(el.innerText.trim())
       );
       console.info(`[INFO] Número total de páginas: ${totalPages}`);
