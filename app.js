@@ -1,12 +1,17 @@
 const express = require("express");
+const cors = require("cors");
 const puppeteer = require("puppeteer");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
 
 const app = express();
 app.use(express.json());
+app.use(cors()); // Permitir CORS para garantir requisições de outros domínios
 
+// Endpoint /scrape-jobs
 app.post("/scrape-jobs", async (req, res) => {
+  console.log("[INFO] Recebida requisição para /scrape-jobs");
+  
   const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
 
   if (!li_at || !searchTerm || !location) {
@@ -43,7 +48,10 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 });
 
+// Endpoint /job-details
 app.post("/job-details", async (req, res) => {
+  console.log("[INFO] Recebida requisição para /job-details");
+
   const { jobUrl, li_at } = req.body;
 
   if (!jobUrl || !li_at) {
@@ -62,7 +70,7 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 8080, ou na primeira porta livre a partir de 8080
+// Inicializar o servidor na porta 8080
 const PORT = parseInt(process.env.PORT) || 8080;
 
 const startServer = (port, maxAttempts = 10) => {
