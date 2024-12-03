@@ -54,27 +54,40 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 3001
-const PORT = process.env.PORT || 3001;
-const server = app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
-
-// Capturar sinais de encerramento para fechar o servidor adequadamente
-process.on('SIGTERM', () => {
-  console.log("Encerrando servidor...");
-  server.close(() => {
-    console.log("Servidor encerrado.");
-    process.exit(0);
+// Inicializar o servidor na porta 8080, mas mudar para uma alternativa se a porta estiver em uso
+const PORT = process.env.PORT || 8080;
+function startServer(port) {
+  const server = app.listen(port, () => {
+    console.log(`Servidor rodando em http://localhost:${port}`);
   });
-});
 
-process.on('SIGINT', () => {
-  console.log("Encerrando servidor...");
-  server.close(() => {
-    console.log("Servidor encerrado.");
-    process.exit(0);
+  server.on("error", (error) => {
+    if (error.code === "EADDRINUSE") {
+      console.warn(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
+      startServer(port + 1);
+    } else {
+      console.error("[ERROR] Erro ao iniciar o servidor:", error);
+    }
   });
-});
+
+  // Capturar sinais de encerramento para fechar o servidor adequadamente
+  process.on('SIGTERM', () => {
+    console.log("Encerrando servidor...");
+    server.close(() => {
+      console.log("Servidor encerrado.");
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    console.log("Encerrando servidor...");
+    server.close(() => {
+      console.log("Servidor encerrado.");
+      process.exit(0);
+    });
+  });
+}
+
+startServer(PORT);
 
 module.exports = { getJobListings, getJobDetails };
