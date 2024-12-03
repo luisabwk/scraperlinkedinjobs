@@ -80,7 +80,7 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
         );
 
         return jobElements.map((job) => {
-          const title = job
+          let title = job
             .querySelector(".job-card-list__title--link")
             ?.innerText.trim()
             .replace(/\n/g, " "); // Remover quebras de linha
@@ -107,6 +107,11 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
           }
 
           const link = job.querySelector("a")?.href;
+
+          // Garantir que o título não esteja duplicado
+          if (title) {
+            title = title.split(' ').filter((item, pos, self) => self.indexOf(item) === pos).join(' ');
+          }
 
           return {
             vaga: title || "",
