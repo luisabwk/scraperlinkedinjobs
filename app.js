@@ -46,9 +46,9 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     let totalPages = 1;
     try {
       await page.waitForSelector(".artdeco-pagination__pages.artdeco-pagination__pages--number", { timeout: 20000 });
-      totalPages = await page.$eval(
-        ".artdeco-pagination__pages.artdeco-pagination__pages--number li:last-child button",
-        (el) => parseInt(el.innerText.trim())
+      totalPages = await page.$$eval(
+        ".artdeco-pagination__pages.artdeco-pagination__pages--number li button",
+        (buttons) => Math.max(...buttons.map((el) => parseInt(el.innerText.trim())).filter(n => !isNaN(n)))
       );
       console.info(`[INFO] Número total de páginas: ${totalPages}`);
     } catch (error) {
@@ -70,7 +70,8 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
         timeout: 120000,
       });
 
-      await page.waitForTimeout(5000); // Aumentar a espera para garantir que os elementos sejam carregados
+      // Garantir que estamos focando na área correta das vagas
+      await page.waitForSelector('.scaffold-layout__list', { timeout: 10000 });
 
       // Captura os dados das vagas na página atual
       const jobsResult = await page.evaluate(() => {
