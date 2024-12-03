@@ -35,7 +35,8 @@ async function getJobDetails(jobUrl, li_at) {
       const title = document.querySelector(".job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
       const locationData = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
-      const description = document.querySelector(".jobs-description__details")?.innerText.trim() || "";
+      const description = document.querySelector(".jobs-description__content jobs-description-content
+            jobs-description__content--condensed")?.innerText.trim() || "";
 
       // Extrair apenas a informação antes do primeiro caractere '·'
       const locationMatch = locationData.match(/^(.*?)(?= ·|$)/);
