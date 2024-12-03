@@ -9,7 +9,7 @@ app.use(express.json());
 // Endpoint para /scrape-jobs
 app.post("/scrape-jobs", async (req, res) => {
   console.log("[INFO] Requisição recebida em /scrape-jobs");
-  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
+  const { searchTerm, location, li_at, maxJobs = 100 } = req.body;
 
   if (!li_at || !searchTerm || !location) {
     return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
@@ -58,8 +58,8 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 8081
-const PORT = process.env.PORT || 8081;
+// Inicializar o servidor na porta 8080
+const PORT = process.env.PORT || 8080;
 
 function startServer(port) {
   const server = app.listen(port, () => {
