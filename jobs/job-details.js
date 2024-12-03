@@ -81,10 +81,16 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 3000
-const PORT = process.env.PORT || 3000;
+// Inicializar o servidor na porta 3001
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+// Capturar sinais de encerramento para fechar o servidor adequadamente
+process.on('SIGTERM', () => {
+  console.log("Encerrando servidor...");
+  process.exit(0);
 });
 
 module.exports = getJobDetails;
