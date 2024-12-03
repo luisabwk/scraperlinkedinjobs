@@ -72,10 +72,10 @@ async function getJobDetails(jobUrl, li_at) {
     await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
 
     const jobDetails = await page.evaluate(() => {
-      const title = document.querySelector(".topcard__title")?.innerText.trim() || "";
-      const company = document.querySelector(".topcard__org-name-link")?.innerText.trim() || "";
-      const location = document.querySelector(".topcard__flavor--bullet")?.innerText.trim() || "";
-      const description = document.querySelector(".description__text")?.innerText.trim() || "";
+      const title = document.querySelector(".t-24 job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
+      const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
+      const location = document.querySelector(".tvm__text tvm__text--low-emphasis")?.innerText.trim() || "";
+      const description = document.querySelector(".jobs-box__html-content")?.innerText.trim() || "";
 
       return {
         title,
