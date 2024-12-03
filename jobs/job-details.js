@@ -82,8 +82,8 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 3001
-const PORT = process.env.PORT || 3001;
+// Inicializar o servidor na porta 3002
+const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
