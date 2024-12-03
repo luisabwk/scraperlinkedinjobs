@@ -63,9 +63,19 @@ app.post("/job-details", async (req, res) => {
 });
 
 // Inicializar o servidor na porta 8080, ou na primeira porta livre a partir de 8080
-const PORT = process.env.PORT || 8080;
+const PORT = parseInt(process.env.PORT) || 8080;
 
-const startServer = (port) => {
+const startServer = (port, maxAttempts = 10) => {
+  if (port >= 65535) {
+    console.error("[ERROR] Todas as portas disponíveis foram usadas. A aplicação não pôde ser iniciada.");
+    process.exit(1);
+  }
+
+  if (maxAttempts <= 0) {
+    console.error("[ERROR] Limite de tentativas para encontrar uma porta livre atingido.");
+    process.exit(1);
+  }
+
   const server = app.listen(port, () => {
     console.log(`Servidor rodando em http://localhost:${port}`);
   });
@@ -73,9 +83,10 @@ const startServer = (port) => {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
       console.warn(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
-      startServer(port + 1);
+      startServer(port + 1, maxAttempts - 1);
     } else {
       console.error("[ERROR] Erro no servidor:", err);
+      process.exit(1);
     }
   });
 };
