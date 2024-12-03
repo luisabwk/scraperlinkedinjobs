@@ -6,7 +6,9 @@ const getJobDetails = require("./jobs/job-details");
 const app = express();
 app.use(express.json());
 
+// Endpoint para /scrape-jobs
 app.post("/scrape-jobs", async (req, res) => {
+  console.log("[INFO] Requisição recebida em /scrape-jobs");
   const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
 
   if (!li_at || !searchTerm || !location) {
@@ -38,7 +40,9 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 });
 
+// Endpoint para /job-details
 app.post("/job-details", async (req, res) => {
+  console.log("[INFO] Requisição recebida em /job-details");
   const { jobUrl, li_at } = req.body;
 
   if (!jobUrl || !li_at) {
@@ -54,7 +58,7 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 8080, com fallback para uma alternativa se a porta estiver em uso
+// Inicializar o servidor na porta 8080
 const PORT = process.env.PORT || 8080;
 
 function startServer(port) {
@@ -65,13 +69,12 @@ function startServer(port) {
   server.on("error", (error) => {
     if (error.code === "EADDRINUSE") {
       console.warn(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
-      startServer(Number(port) + 1); // Incrementar para próxima porta
+      startServer(Number(port) + 1);
     } else {
       console.error("[ERROR] Erro ao iniciar o servidor:", error);
     }
   });
 
-  // Capturar sinais de encerramento para fechar o servidor adequadamente
   process.on('SIGTERM', () => {
     console.log("Encerrando servidor...");
     server.close(() => {
