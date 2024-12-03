@@ -142,7 +142,10 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
 
-    return allJobs.slice(0, maxJobs);
+    return {
+      totalVagas: allJobs.length,
+      vagas: allJobs.slice(0, maxJobs),
+    };
   } catch (error) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
     throw new Error("Erro durante o scraping.");
@@ -172,7 +175,7 @@ app.post("/scrape-jobs", async (req, res) => {
     });
 
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
-    res.status(200).send({ message: "Scraping realizado com sucesso!", jobs });
+    res.status(200).send({ message: "Scraping realizado com sucesso!", totalVagas: jobs.totalVagas, jobs: jobs.vagas });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
     res.status(500).send({ error: error.message });
