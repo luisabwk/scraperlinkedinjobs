@@ -42,7 +42,8 @@ async function getJobDetails(jobUrl, li_at) {
       const description = document.querySelector("#job-details")?.innerText.trim() || "";
 
       // Extrair apenas a informação antes do primeiro caractere '·'
-      const location = locationData.split('·')[0].trim();
+      const locationMatch = locationData.match(/^(.*?)(?= ·|$)/);
+      const location = locationMatch ? locationMatch[0].trim() : "";
 
       return {
         title,
