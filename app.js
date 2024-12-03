@@ -54,8 +54,8 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 3001
-const PORT = process.env.PORT || 3001;
+// Inicializar o servidor na porta 8080
+const PORT = process.env.PORT || 8080;
 const server = app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
@@ -77,7 +77,4 @@ process.on('SIGINT', () => {
   });
 });
 
-module.exports = {
-  getJobListings,
-  getJobDetails
-};
+module.exports = { getJobListings, getJobDetails };
