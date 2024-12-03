@@ -54,8 +54,30 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 3000
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+// Inicializar o servidor na porta 3001
+const PORT = process.env.PORT || 3001;
+const server = app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
+
+// Capturar sinais de encerramento para fechar o servidor adequadamente
+process.on('SIGTERM', () => {
+  console.log("Encerrando servidor...");
+  server.close(() => {
+    console.log("Servidor encerrado.");
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log("Encerrando servidor...");
+  server.close(() => {
+    console.log("Servidor encerrado.");
+    process.exit(0);
+  });
+});
+
+module.exports = {
+  getJobListings,
+  getJobDetails
+};
