@@ -58,12 +58,12 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 8080
-const PORT = process.env.PORT || 8080;
+// Inicializar o servidor na porta 8081
+const PORT = process.env.PORT || 8081;
 
 function startServer(port) {
   const server = app.listen(port, () => {
-    console.log(`Servidor rodando em http://localhost:${port}`);
+    console.log(`Servidor rodando em http://api.growthbrains.com.br:${port}`);
   });
 
   server.on("error", (error) => {
