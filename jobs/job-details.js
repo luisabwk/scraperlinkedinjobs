@@ -53,6 +53,7 @@ async function getJobDetails(jobUrl, li_at) {
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
       const locationData = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
       const description = document.querySelector("#job-details")?.innerText.trim() || "";
+      const format = document.querySelector(".job-details-jobs-unified-top-card__job-insight")?.innerText.trim() || "";
 
       // Extrair apenas a informação antes do primeiro caractere '·'
       const locationMatch = locationData.match(/^(.*?)(?= ·|$)/);
@@ -63,6 +64,7 @@ async function getJobDetails(jobUrl, li_at) {
         company,
         location,
         description,
+        format,
       };
     });
 
