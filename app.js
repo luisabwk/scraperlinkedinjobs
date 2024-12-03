@@ -54,8 +54,9 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 8080, mas mudar para uma alternativa se a porta estiver em uso
+// Inicializar o servidor na porta 8080, com fallback para uma alternativa se a porta estiver em uso
 const PORT = process.env.PORT || 8080;
+
 function startServer(port) {
   const server = app.listen(port, () => {
     console.log(`Servidor rodando em http://localhost:${port}`);
@@ -64,7 +65,7 @@ function startServer(port) {
   server.on("error", (error) => {
     if (error.code === "EADDRINUSE") {
       console.warn(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
-      startServer(port + 1);
+      startServer(Number(port) + 1); // Incrementar para próxima porta
     } else {
       console.error("[ERROR] Erro ao iniciar o servidor:", error);
     }
