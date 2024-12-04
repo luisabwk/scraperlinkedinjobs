@@ -1,6 +1,7 @@
 const puppeteer = require("puppeteer");
 
 async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
+  console.log("[DEBUG] Iniciando o processo de getJobListings...");
   let allJobs = [];
   const baseUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(searchTerm)}&location=${encodeURIComponent(location)}&geoId=106057199&f_TPR=r86400`;
 
