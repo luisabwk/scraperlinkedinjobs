@@ -2,6 +2,7 @@ const express = require("express");
 const puppeteer = require("puppeteer");
 const cors = require("cors");
 const getJobListings = require("./jobs/scrape-jobs");
+const getJobDetails = require("./jobs/job-details");
 
 const app = express();
 app.use(express.json());
@@ -32,6 +33,39 @@ app.post("/scrape-jobs", async (req, res) => {
     res.status(200).send({ message: "Scraping realizado com sucesso!", totalVagas: jobs.totalVagas, jobs: jobs.vagas });
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
+    res.status(500).send({ error: error.message });
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+});
+
+// Endpoint para obter os detalhes de uma vaga individual
+app.post("/job-details", async (req, res) => {
+  const { jobUrl, li_at } = req.body;
+
+  if (!jobUrl || !li_at) {
+    return res.status(400).send({ error: "Parâmetros 'jobUrl' e 'li_at' são obrigatórios." });
+  }
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+      ],
+    });
+
+    const jobDetails = await getJobDetails(browser, jobUrl, li_at);
+    res.status(200).send({ message: "Detalhes da vaga obtidos com sucesso!", jobDetails });
+  } catch (error) {
+    console.error("[ERROR] Ocorreu um erro ao obter os detalhes da vaga:", error);
     res.status(500).send({ error: error.message });
   } finally {
     if (browser) {
@@ -73,4 +107,4 @@ process.on('SIGINT', () => {
   });
 });
 
-module.exports = getJobListings;
+module.exports = { getJobListings, getJobDetails };
