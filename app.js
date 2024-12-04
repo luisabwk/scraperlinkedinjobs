@@ -92,7 +92,7 @@ let server;
 
 const startServer = (port) => {
   server = app.listen(port, () => {
-    console.log(`Servidor rodando em http://localhost:${port}`);
+    console.log(`Servidor rodando em http://api.growthbrains.com.br:${port}`);
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.log(`[WARN] Porta ${port} já está em uso. Tentando uma porta aleatória...`);
