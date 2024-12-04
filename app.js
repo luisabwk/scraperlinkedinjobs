@@ -4,12 +4,12 @@ const cors = require("cors");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
 
-const app = express();
-app.use(express.json());
-app.use(cors());
+// Aplicação para o endpoint `/scrape-jobs`
+const appJobs = express();
+appJobs.use(express.json());
+appJobs.use(cors());
 
-// Endpoint para obter a lista de vagas
-app.post("/scrape-jobs", async (req, res) => {
+appJobs.post("/scrape-jobs", async (req, res) => {
   const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
 
   if (!li_at || !searchTerm || !location) {
@@ -41,8 +41,12 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 });
 
-// Endpoint para obter os detalhes de uma vaga individual
-app.post("/job-details", async (req, res) => {
+// Aplicação para o endpoint `/job-details`
+const appDetails = express();
+appDetails.use(express.json());
+appDetails.use(cors());
+
+appDetails.post("/job-details", async (req, res) => {
   const { jobUrl, li_at } = req.body;
 
   if (!jobUrl || !li_at) {
@@ -74,43 +78,72 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Inicializar o servidor na porta 8080
-const PORT = process.env.PORT || 8080;
-let server;
+// Inicializar o servidor `/scrape-jobs` na porta 8080
+const PORT_JOBS = process.env.PORT_JOBS || 8080;
+let serverJobs;
 
-const startServer = (port) => {
-  server = app.listen(port, () => {
-    console.log(`Servidor rodando em http://localhost:${port}`);
+const startServerJobs = (port) => {
+  serverJobs = appJobs.listen(port, () => {
+    console.log(`Servidor de Jobs rodando em http://localhost:${port}/scrape-jobs`);
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.log(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
       const newPort = parseInt(port) + 1;
       if (newPort < 65536) {
-        startServer(newPort);
+        startServerJobs(newPort);
       } else {
         console.error(`[ERROR] Nenhuma porta disponível para iniciar o servidor.`);
         process.exit(1);
       }
     } else {
-      console.error(`[ERROR] Ocorreu um erro ao iniciar o servidor: ${err}`);
+      console.error(`[ERROR] Ocorreu um erro ao iniciar o servidor de Jobs: ${err}`);
       process.exit(1);
     }
   });
 };
 
-startServer(PORT);
+// Inicializar o servidor `/job-details` na porta 8081
+const PORT_DETAILS = process.env.PORT_DETAILS || 8081;
+let serverDetails;
 
-// Capturar sinais de encerramento para fechar o servidor adequadamente
+const startServerDetails = (port) => {
+  serverDetails = appDetails.listen(port, () => {
+    console.log(`Servidor de Detalhes rodando em http://localhost:${port}/job-details`);
+  }).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
+      const newPort = parseInt(port) + 1;
+      if (newPort < 65536) {
+        startServerDetails(newPort);
+      } else {
+        console.error(`[ERROR] Nenhuma porta disponível para iniciar o servidor.`);
+        process.exit(1);
+      }
+    } else {
+      console.error(`[ERROR] Ocorreu um erro ao iniciar o servidor de Detalhes: ${err}`);
+      process.exit(1);
+    }
+  });
+};
+
+// Iniciar os dois servidores
+startServerJobs(PORT_JOBS);
+startServerDetails(PORT_DETAILS);
+
+// Capturar sinais de encerramento para fechar os servidores adequadamente
 const gracefulShutdown = () => {
-  console.log("Encerrando servidor...");
-  if (server) {
-    server.close(() => {
-      console.log("Servidor encerrado.");
-      process.exit(0);
+  console.log("Encerrando servidores...");
+  if (serverJobs) {
+    serverJobs.close(() => {
+      console.log("Servidor de Jobs encerrado.");
     });
-  } else {
-    process.exit(0);
   }
+  if (serverDetails) {
+    serverDetails.close(() => {
+      console.log("Servidor de Detalhes encerrado.");
+    });
+  }
+  process.exit(0);
 };
 
 process.on('SIGTERM', gracefulShutdown);
