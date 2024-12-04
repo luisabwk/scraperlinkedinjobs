@@ -78,8 +78,44 @@ app.post("/job-details", async (req, res) => {
 
 // Inicializar o servidor na porta 8080
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
+let server;
+
+const startServer = (port) => {
+  server = app.listen(port, () => {
+    console.log(`Servidor rodando em http://localhost:${port}`);
+  }).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
+      const newPort = port + 1; // Corrigir para não gerar valores fora do range de portas válidas
+      if (newPort <= 65535) {
+        startServer(newPort);
+      } else {
+        console.error(`[ERROR] Nenhuma porta disponível para iniciar o servidor.`);
+        process.exit(1);
+      }
+    } else {
+      console.error(`[ERROR] Ocorreu um erro ao iniciar o servidor: ${err}`);
+      process.exit(1);
+    }
+  });
+};
+
+startServer(PORT);
+
+// Capturar sinais de encerramento para fechar o servidor adequadamente
+const gracefulShutdown = () => {
+  console.log("Encerrando servidor...");
+  if (server) {
+    server.close(() => {
+      console.log("Servidor encerrado.");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 module.exports = { getJobListings, getJobDetails };
