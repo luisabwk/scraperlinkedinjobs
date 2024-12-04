@@ -32,9 +32,14 @@ app.post("/scrape-jobs", async (req, res) => {
 
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
     res.status(200).send({ message: "Scraping realizado com sucesso!", totalVagas: jobs.totalVagas, jobs: jobs.vagas });
+
+    // Encerrar a aplicação logo após enviar a resposta
+    console.log("[INFO] Encerrando aplicação após conclusão do endpoint /scrape-jobs...");
+    process.exit(0);
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro:", error);
     res.status(500).send({ error: error.message });
+    process.exit(1); // Encerrar com código de erro
   } finally {
     if (browser) {
       await browser.close();
@@ -66,9 +71,14 @@ app.post("/job-details", async (req, res) => {
 
     const jobDetails = await getJobDetails(browser, jobUrl, li_at);
     res.status(200).send({ message: "Detalhes da vaga obtidos com sucesso!", jobDetails });
+
+    // Encerrar a aplicação logo após enviar a resposta
+    console.log("[INFO] Encerrando aplicação após conclusão do endpoint /job-details...");
+    process.exit(0);
   } catch (error) {
     console.error("[ERROR] Ocorreu um erro ao obter os detalhes da vaga:", error);
     res.status(500).send({ error: error.message });
+    process.exit(1); // Encerrar com código de erro
   } finally {
     if (browser) {
       await browser.close();
