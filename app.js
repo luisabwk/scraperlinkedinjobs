@@ -84,7 +84,13 @@ const startServer = (port) => {
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.log(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
-      startServer(port + 1);
+      const newPort = parseInt(port) + 1;
+      if (newPort < 65536) {
+        startServer(newPort);
+      } else {
+        console.error(`[ERROR] Nenhuma porta disponível para iniciar o servidor.`);
+        process.exit(1);
+      }
     } else {
       console.error(`[ERROR] Ocorreu um erro ao iniciar o servidor: ${err}`);
       process.exit(1);
