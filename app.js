@@ -85,14 +85,9 @@ const startServer = (port) => {
     console.log(`Servidor rodando em http://localhost:${port}`);
   }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.log(`[WARN] Porta ${port} já está em uso. Tentando a próxima porta...`);
-      const newPort = port + 1; // Corrigir para não gerar valores fora do range de portas válidas
-      if (newPort <= 65535) {
-        startServer(newPort);
-      } else {
-        console.error(`[ERROR] Nenhuma porta disponível para iniciar o servidor.`);
-        process.exit(1);
-      }
+      console.log(`[WARN] Porta ${port} já está em uso. Tentando uma porta aleatória...`);
+      const newPort = Math.floor(Math.random() * (65535 - 3000)) + 3000; // Escolhe uma porta aleatória entre 3000 e 65535
+      startServer(newPort);
     } else {
       console.error(`[ERROR] Ocorreu um erro ao iniciar o servidor: ${err}`);
       process.exit(1);
