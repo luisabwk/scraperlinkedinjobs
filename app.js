@@ -18,6 +18,7 @@ app.post("/scrape-jobs", async (req, res) => {
 
   let browser;
   try {
+    console.log("[DEBUG] Iniciando scraping de jobs...");
     browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -51,6 +52,7 @@ app.post("/job-details", async (req, res) => {
 
   let browser;
   try {
+    console.log("[DEBUG] Iniciando scraping de detalhes da vaga...");
     browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -76,30 +78,8 @@ app.post("/job-details", async (req, res) => {
 
 // Inicializar o servidor na porta 8080
 const PORT = process.env.PORT || 8080;
-
-const startServer = () => {
-  app.listen(PORT, () => {
-    console.log(`Servidor rodando em http://localhost:${PORT}`);
-  }).on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.log(`[WARN] Porta ${PORT} já está em uso.`);
-      process.exit(1);
-    } else {
-      console.error(`[ERROR] Ocorreu um erro ao iniciar o servidor: ${err}`);
-      process.exit(1);
-    }
-  });
-};
-
-startServer();
-
-// Capturar sinais de encerramento para fechar o servidor adequadamente
-const gracefulShutdown = () => {
-  console.log("Encerrando servidor...");
-  process.exit(0);
-};
-
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
 
 module.exports = { getJobListings, getJobDetails };
