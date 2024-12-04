@@ -6,20 +6,20 @@ const getJobDetails = require("./jobs/job-details");
 const app = express();
 app.use(express.json());
 
-// Timeout para requisições longas (2 minutos)
-const TIMEOUT = 120000;
+// Configurações
+const TIMEOUT = 180000; // 3 minutos
+const BROWSER_TIMEOUT = 30000; // 30 segundos para operações do browser
 
-// Pool de browsers para reutilização
-let browserPool = [];
-const MAX_POOL_SIZE = 3;
+// Middleware para logging de requisições
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    next();
+});
 
-// Função para obter um browser do pool ou criar um novo
-async function getBrowser() {
-    if (browserPool.length > 0) {
-        return browserPool.pop();
-    }
-    
-    return await puppeteer.launch({
+async function createBrowser() {
+    console.log('[INFO] Iniciando nova instância do browser...');
+    const browser = await puppeteer.launch({
         headless: true,
         args: [
             "--no-sandbox",
@@ -27,114 +27,78 @@ async function getBrowser() {
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--disable-software-rasterizer",
-            "--max-old-space-size=4096" // Aumenta o limite de memória
+            "--window-size=1920,1080",
+            "--disable-web-security",
+            "--disable-features=IsolateOrigins,site-per-process"
         ],
+        defaultViewport: {
+            width: 1920,
+            height: 1080
+        },
+        timeout: BROWSER_TIMEOUT
     });
+    console.log('[INFO] Browser iniciado com sucesso');
+    return browser;
 }
 
-// Função para retornar um browser ao pool
-function returnBrowser(browser) {
-    if (browserPool.length < MAX_POOL_SIZE && browser) {
-        browserPool.push(browser);
-    } else if (browser) {
-        browser.close().catch(console.error);
-    }
-}
-
-// Middleware para timeout
-const timeoutMiddleware = (req, res, next) => {
-    res.setTimeout(TIMEOUT, () => {
-        res.status(408).send({
-            error: "Timeout da requisição atingido"
-        });
-    });
-    next();
-};
-
-app.use(timeoutMiddleware);
-
-// Endpoint para obter a lista de vagas
 app.post("/scrape-jobs", async (req, res) => {
+    console.log('[INFO] Iniciando scrape-jobs...');
     const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
-    
+
     if (!li_at || !searchTerm || !location) {
+        console.log('[ERROR] Parâmetros inválidos');
         return res.status(400).send({
             error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios."
         });
     }
 
     let browser;
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout global da operação')), TIMEOUT)
+    );
+
     try {
-        browser = await getBrowser();
-        const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
-        
+        console.log('[INFO] Criando browser...');
+        browser = await createBrowser();
+
+        const scrapePromise = getJobListings(browser, searchTerm, location, li_at, maxJobs);
+        const jobs = await Promise.race([scrapePromise, timeoutPromise]);
+
+        console.log(`[INFO] Scraping concluído. Total de vagas encontradas: ${jobs?.totalVagas || 0}`);
         res.status(200).send({
             message: "Scraping realizado com sucesso!",
             totalVagas: jobs.totalVagas,
             jobs: jobs.vagas
         });
     } catch (error) {
-        console.error("[ERROR] Scrape-jobs:", error);
+        console.error('[ERROR] Erro durante o scraping:', error);
         
-        // Tratamento específico de erros
-        if (error.message.includes("Navigation timeout")) {
-            return res.status(504).send({
-                error: "Tempo limite excedido ao carregar a página"
-            });
+        let statusCode = 500;
+        let errorMessage = error.message;
+
+        if (error.message.includes('Timeout')) {
+            statusCode = 504;
+            errorMessage = "A operação excedeu o tempo limite";
+        } else if (error.message.includes('Protocol error')) {
+            statusCode = 502;
+            errorMessage = "Erro de comunicação com o LinkedIn";
         }
-        
-        res.status(500).send({
-            error: "Erro interno ao processar a requisição",
-            details: error.message
+
+        res.status(statusCode).send({
+            error: errorMessage,
+            details: error.stack
         });
     } finally {
         if (browser) {
-            returnBrowser(browser);
-        }
-    }
-});
-
-// Endpoint para obter os detalhes de uma vaga individual
-app.post("/job-details", async (req, res) => {
-    const { jobUrl, li_at } = req.body;
-    
-    if (!jobUrl || !li_at) {
-        return res.status(400).send({
-            error: "Parâmetros 'jobUrl' e 'li_at' são obrigatórios."
-        });
-    }
-
-    let browser;
-    try {
-        browser = await getBrowser();
-        const jobDetails = await getJobDetails(browser, jobUrl, li_at);
-        
-        res.status(200).send({
-            message: "Detalhes da vaga obtidos com sucesso!",
-            jobDetails
-        });
-    } catch (error) {
-        console.error("[ERROR] Job-details:", error);
-        
-        if (error.message.includes("Navigation timeout")) {
-            return res.status(504).send({
-                error: "Tempo limite excedido ao carregar a página"
-            });
-        }
-        
-        res.status(500).send({
-            error: "Erro interno ao processar a requisição",
-            details: error.message
-        });
-    } finally {
-        if (browser) {
-            returnBrowser(browser);
+            console.log('[INFO] Fechando browser...');
+            await browser.close().catch(console.error);
         }
     }
 });
 
 // Tratamento para rotas não encontradas
 app.use((req, res) => {
+    console.log(`[WARN] Rota não encontrada: ${req.path}`);
     res.status(404).send({
         error: "Endpoint não encontrado"
     });
@@ -142,37 +106,29 @@ app.use((req, res) => {
 
 // Gerenciamento de erros global
 app.use((error, req, res, next) => {
-    console.error("[ERROR] Global:", error);
+    console.error('[ERROR] Erro global:', error);
     res.status(500).send({
         error: "Erro interno do servidor",
-        details: error.message
+        details: error.message,
+        stack: error.stack
     });
 });
 
-// Inicializar o servidor com retry e gerenciamento de processo
-function startServer(port, maxRetries = 5) {
+function startServer(port) {
     const server = app.listen(port, () => {
-        console.log(`Servidor rodando em http://localhost:${port}`);
+        console.log(`[${new Date().toISOString()}] Servidor rodando em http://localhost:${port}`);
     });
+
+    server.timeout = TIMEOUT;
 
     server.on("error", (error) => {
-        if (error.code === "EADDRINUSE" && maxRetries > 0) {
-            console.warn(`[WARN] Porta ${port} em uso. Tentando porta ${port + 1}...`);
-            startServer(port + 1, maxRetries - 1);
+        if (error.code === "EADDRINUSE") {
+            console.warn(`[WARN] Porta ${port} em uso. Tentando próxima porta...`);
+            startServer(port + 1);
         } else {
-            console.error("[ERROR] Erro fatal ao iniciar servidor:", error);
+            console.error("[ERROR] Erro ao iniciar servidor:", error);
             process.exit(1);
         }
-    });
-
-    // Limpeza adequada ao encerrar
-    process.on("SIGTERM", async () => {
-        console.log("Recebido sinal SIGTERM, encerrando graciosamente...");
-        await Promise.all(browserPool.map(browser => browser.close()));
-        server.close(() => {
-            console.log("Servidor encerrado");
-            process.exit(0);
-        });
     });
 
     return server;
