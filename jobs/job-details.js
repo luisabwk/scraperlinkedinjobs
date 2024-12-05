@@ -65,18 +65,34 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
       if (buttonText.includes("Candidatar-se")) {
-        console.log("[INFO] Detectada candidatura externa. Aguardando nova aba...");
+        console.log("[INFO] Detectada candidatura externa. Clicando no botão de candidatura...");
         
-        const newPagePromise = new Promise(x => browser.once('targetcreated', target => x(target.page())));
+        // Contingência caso apareça o modal com botão "Continuar"
         await page.click(applyButtonSelector);
-        const newTab = await newPagePromise;
-        await newTab.waitForTimeout(2000); 
-        const applyUrl = newTab.url();
+        const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
+        
+        await page.waitForSelector(modalButtonSelector, { timeout: 3000 })
+          .then(async () => {
+            console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
+            await page.click(modalButtonSelector);
+          })
+          .catch(() => {
+            console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
+          });
 
+        console.log("[INFO] Aguardando nova aba ser criada...");
+        const newTarget = await browser.waitForTarget(
+          target => target.opener() === page.target() && target.type() === 'page',
+          { timeout: 10000 }
+        );
+        
+        const newTab = await newTarget.page();
+        await newTab.waitForTimeout(2000);
+
+        const applyUrl = newTab.url();
         console.log("[INFO] URL de aplicação encontrada:", applyUrl);
         jobDetails.applyUrl = applyUrl;
-        
-        // Fecha a nova aba
+
         await newTab.close();
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
