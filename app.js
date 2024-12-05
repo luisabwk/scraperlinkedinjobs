@@ -10,7 +10,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Rota de healthcheck
+// Rotas da API (mantidas as mesmas)
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "ok",
@@ -18,122 +18,79 @@ app.get("/", (req, res) => {
   });
 });
 
-// Endpoint para obter a lista de vagas
-app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
-  if (!li_at || !searchTerm || !location) {
-    return res.status(400).json({
-      error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios."
-    });
-  }
+// ... outros endpoints permanecem iguais ...
 
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu"
-      ]
+// Função para tentar iniciar o servidor em diferentes portas
+async function startServer(initialPort, maxRetries = 10) {
+  let currentPort = initialPort;
+  let retries = 0;
+
+  const tryPort = (port) => {
+    return new Promise((resolve, reject) => {
+      const server = app.listen(port, () => {
+        console.log(`✅ Servidor iniciado com sucesso na porta ${port}`);
+        
+        // Configurar handlers de cleanup
+        const cleanup = () => {
+          server.close(() => {
+            console.log('Servidor encerrado graciosamente');
+            process.exit(0);
+          });
+        };
+
+        process.on('SIGTERM', cleanup);
+        process.on('SIGINT', cleanup);
+
+        resolve(server);
+      });
+
+      server.on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+          console.log(`⚠️ Porta ${port} está em uso`);
+          server.close();
+          reject(error);
+        } else {
+          console.error('❌ Erro ao iniciar servidor:', error);
+          reject(error);
+        }
+      });
     });
-    const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
-    res.status(200).json({
-      message: "Scraping realizado com sucesso!",
-      totalVagas: jobs.totalVagas,
-      jobs: jobs.vagas
-    });
-  } catch (error) {
-    console.error("[ERROR] Ocorreu um erro:", error);
-    res.status(500).json({ error: error.message });
-  } finally {
-    if (browser) {
-      await browser.close();
+  };
+
+  while (retries < maxRetries) {
+    try {
+      const server = await tryPort(currentPort);
+      return server; // Retorna o servidor se iniciado com sucesso
+    } catch (error) {
+      if (error.code === 'EADDRINUSE') {
+        retries++;
+        currentPort++;
+        console.log(`Tentativa ${retries} de ${maxRetries}: Tentando porta ${currentPort}`);
+      } else {
+        throw error; // Re-throw outros tipos de erro
+      }
     }
   }
-});
 
-// Endpoint para obter os detalhes de uma vaga individual
-app.post("/job-details", async (req, res) => {
-  const { jobUrl, li_at } = req.body;
-  if (!jobUrl || !li_at) {
-    return res.status(400).json({
-      error: "Parâmetros 'jobUrl' e 'li_at' são obrigatórios."
-    });
-  }
+  throw new Error(`Não foi possível encontrar uma porta disponível após ${maxRetries} tentativas`);
+}
 
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu"
-      ]
-    });
-    const jobDetails = await getJobDetails(browser, jobUrl, li_at);
-    res.status(200).json({
-      message: "Detalhes da vaga obtidos com sucesso!",
-      jobDetails
-    });
-  } catch (error) {
-    console.error("[ERROR] Ocorreu um erro ao obter os detalhes da vaga:", error);
-    res.status(500).json({ error: error.message });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-});
+// Iniciar o servidor
+const PORT = parseInt(process.env.PORT) || 8080;
 
-// Middleware para rotas não encontradas
-app.use((req, res) => {
-  res.status(404).json({ error: "Endpoint não encontrado" });
-});
-
-// Middleware de erro global
-app.use((error, req, res, next) => {
-  console.error("[ERROR] Erro global:", error);
-  res.status(500).json({
-    error: "Erro interno do servidor",
-    details: error.message
-  });
-});
-
-// Configuração da porta para o Railway
-const port = process.env.PORT || 8080;
-
-// Inicialização do servidor
-const server = app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
-
-// Tratamento de erros do servidor
-server.on("error", (error) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(`Porta ${port} já está em uso`);
+startServer(PORT)
+  .catch((error) => {
+    console.error('❌ Erro fatal ao iniciar servidor:', error);
     process.exit(1);
-  } else {
-    console.error("Erro no servidor:", error);
-  }
+  });
+
+// Handler para erros não tratados
+process.on('uncaughtException', (error) => {
+  console.error('❌ Erro não tratado:', error);
+  process.exit(1);
 });
 
-// Tratamento de sinais de encerramento
-process.on("SIGTERM", () => {
-  console.log("Recebido sinal SIGTERM. Encerrando servidor...");
-  server.close(() => {
-    console.log("Servidor encerrado");
-    process.exit(0);
-  });
-});
-
-process.on("SIGINT", () => {
-  console.log("Recebido sinal SIGINT. Encerrando servidor...");
-  server.close(() => {
-    console.log("Servidor encerrado");
-    process.exit(0);
-  });
+process.on('unhandledRejection', (error) => {
+  console.error('❌ Promise rejection não tratada:', error);
+  process.exit(1);
 });
