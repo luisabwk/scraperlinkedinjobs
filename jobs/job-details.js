@@ -63,7 +63,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
         foundUrls.add(url);
       }
       
-      if (request.resourceType() === 'image' || request.resourceType() === 'media' || request.resourceType() === 'font') {
+      if (['image', 'media', 'font'].includes(request.resourceType())) {
         request.abort();
       } else {
         request.continue();
@@ -137,7 +137,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
         
         // Clicar no botão e aguardar novas URLs
         await page.click(applyButtonSelector);
-        await new Promise(r => setTimeout(r, 3000));
+        await page.waitForTimeout(3000);
         
         // Procurar por URLs válidas
         const allUrls = Array.from(foundUrls);
