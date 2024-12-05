@@ -5,6 +5,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
   let page = null;
   let newPage = null;
   let jobDetails = {};
+  let finalUrl = null;
 
   try {
     page = await browser.newPage();
@@ -83,41 +84,43 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
 
+        // Aguardar nova aba ser aberta
         const newPagePromise = new Promise(resolve => {
           browser.once('targetcreated', async target => {
-            const newPage = await target.page();
-            resolve(newPage);
+            const page = await target.page();
+            resolve(page);
           });
         });
 
+        // Clicar no botão e esperar a nova aba
         await page.click(applyButtonSelector);
         console.log("[INFO] Botão de candidatura clicado");
 
-        try {
-          newPage = await newPagePromise;
-          console.log("[DEBUG] Nova aba criada");
+        // Aguardar nova aba
+        newPage = await newPagePromise;
+        console.log("[DEBUG] Nova aba criada");
 
-          if (newPage) {
-            await newPage.waitForNavigation({ waitUntil: 'networkidle0', timeout: 5000 })
-              .catch(() => console.log("[DEBUG] Timeout esperando navegação completa"));
+        if (newPage) {
+            // Aguardar carregamento inicial da nova aba
+            await newPage.waitForNavigation({ waitUntil: 'networkidle0' })
+                .catch(() => console.log("[DEBUG] Timeout no carregamento da nova aba"));
 
-            const currentUrl = await newPage.url();
-            console.log("[DEBUG] URL atual da nova aba:", currentUrl);
+            // Aguardar um pouco mais para garantir carregamento completo
+            await new Promise(r => setTimeout(r, 3000));
 
-            // Verificar se é uma URL externa (não-LinkedIn)
-            if (currentUrl && !currentUrl.includes('linkedin.com')) {
-                console.log("[INFO] URL externa encontrada");
-                jobDetails.applyUrl = currentUrl;
+            // Capturar URL
+            finalUrl = await newPage.url();
+            console.log("[DEBUG] URL capturada na nova aba:", finalUrl);
+
+            // Verificar se é URL externa
+            if (finalUrl && !finalUrl.includes('linkedin.com')) {
+                console.log("[INFO] URL externa válida encontrada");
+                jobDetails.applyUrl = finalUrl;
             } else {
-                console.log("[INFO] URL do LinkedIn encontrada - usando URL original da vaga");
+                console.log("[INFO] URL do LinkedIn encontrada - mantendo URL original");
                 jobDetails.applyUrl = jobUrl;
             }
-          }
-        } catch (error) {
-          console.warn("[WARN] Erro ao processar nova aba:", error.message);
-          jobDetails.applyUrl = jobUrl;
         }
-        
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
         jobDetails.applyUrl = jobUrl;
@@ -131,10 +134,18 @@ async function getJobDetails(browser, jobUrl, li_at) {
       jobDetails.applyUrl = jobUrl;
     }
 
+    // Garantir que temos a URL antes de retornar
+    if (finalUrl && !jobDetails.applyUrl) {
+      jobDetails.applyUrl = finalUrl;
+    }
+
+    return jobDetails;
+
   } catch (error) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
     throw error;
   } finally {
+    // Fechar páginas somente depois de garantir que temos a URL
     if (newPage) {
       try {
         await newPage.close();
@@ -153,8 +164,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
       }
     }
   }
-
-  return jobDetails;
 }
 
 module.exports = getJobDetails;
