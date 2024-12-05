@@ -3,20 +3,17 @@
   "version": "1.0.0",
   "description": "API para scraping de vagas no LinkedIn",
   "main": "app.js",
-  "engines": {
-    "node": ">=16.x"
-  },
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "puppeteer": "^23.10.1",
-    "axios": "^1.6.2",
+    "express": "^4.18.3",
+    "puppeteer": "^22.4.1",
+    "axios": "^1.6.7",
     "cors": "^2.8.5"
   },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
+  "engines": {
+    "node": "20.x"
   }
 }
