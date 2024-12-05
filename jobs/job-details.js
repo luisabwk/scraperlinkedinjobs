@@ -2,26 +2,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
   let jobDetails = {};
-  const foundUrls = new Set();
 
   try {
     page = await browser.newPage();
-    
-    // Configurar interceptação de requisições para coletar URLs
-    await page.setRequestInterception(true);
-    page.on('request', (request) => {
-      const url = request.url();
-      if (url && !url.includes('linkedin.com')) {
-        foundUrls.add(url);
-      }
-      
-      if (['image', 'media', 'font'].includes(request.resourceType())) {
-        request.abort();
-      } else {
-        request.continue();
-      }
-    });
-
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
     await page.setCookie(...cookies);
 
@@ -82,31 +65,19 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
       if (buttonText.includes("Candidatar-se")) {
-        console.log("[INFO] Detectada candidatura externa. Procurando URL...");
+        console.log("[INFO] Detectada candidatura externa. Aguardando nova aba...");
         
-        // Coletar URLs antes do clique
-        const beforeUrls = new Set(foundUrls);
-        
-        // Clicar no botão e aguardar novas URLs
+        const newPagePromise = new Promise(x => browser.once('targetcreated', target => x(target.page())));
         await page.click(applyButtonSelector);
-        // Substituição da função page.waitForTimeout() por um setTimeout usando uma Promise
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        const newTab = await newPagePromise;
+        await newTab.waitForTimeout(2000); 
+        const applyUrl = newTab.url();
+
+        console.log("[INFO] URL de aplicação encontrada:", applyUrl);
+        jobDetails.applyUrl = applyUrl;
         
-        // Procurar por URLs válidas
-        const allUrls = Array.from(foundUrls);
-        console.log("[DEBUG] URLs encontradas:", allUrls);
-        
-        // Filtrar URLs válidas
-        const validUrls = allUrls.filter(url => isValidApplyUrl(url, jobDetails.company));
-        
-        if (validUrls.length > 0) {
-          const applyUrl = validUrls[0];
-          console.log("[INFO] URL de aplicação encontrada:", applyUrl);
-          jobDetails.applyUrl = applyUrl;
-        } else {
-          console.log("[INFO] Nenhuma URL válida encontrada - usando URL original");
-          jobDetails.applyUrl = jobUrl;
-        }
+        // Fecha a nova aba
+        await newTab.close();
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
         jobDetails.applyUrl = jobUrl;
