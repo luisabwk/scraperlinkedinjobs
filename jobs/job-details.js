@@ -3,14 +3,10 @@ const puppeteer = require("puppeteer");
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
+  let newPage = null;
   let jobDetails = {};
 
   try {
-    // Capturar todas as abas iniciais
-    const initialPages = await browser.pages();
-    const initialPagesCount = initialPages.length;
-    console.log(`[DEBUG] Número inicial de abas: ${initialPagesCount}`);
-
     page = await browser.newPage();
     
     await page.setDefaultNavigationTimeout(60000);
@@ -87,29 +83,39 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
 
-        // Clicar no botão
+        const newPagePromise = new Promise(resolve => {
+          browser.once('targetcreated', async target => {
+            const newPage = await target.page();
+            resolve(newPage);
+          });
+        });
+
         await page.click(applyButtonSelector);
         console.log("[INFO] Botão de candidatura clicado");
 
-        // Esperar um pouco para a nova aba abrir
-        await new Promise(r => setTimeout(r, 2000));
+        try {
+          newPage = await newPagePromise;
+          console.log("[DEBUG] Nova aba criada");
 
-        // Pegar todas as abas após o clique
-        const allPages = await browser.pages();
-        console.log(`[DEBUG] Número de abas após clique: ${allPages.length}`);
+          if (newPage) {
+            await newPage.waitForNavigation({ waitUntil: 'networkidle0', timeout: 5000 })
+              .catch(() => console.log("[DEBUG] Timeout esperando navegação completa"));
 
-        // Encontrar a nova aba (última aba aberta)
-        if (allPages.length > initialPagesCount) {
-          const newPage = allPages[allPages.length - 1];
-          const newUrl = await newPage.url();
-          console.log("[INFO] URL da nova aba:", newUrl);
-          jobDetails.applyUrl = newUrl;
+            const currentUrl = await newPage.url();
+            console.log("[DEBUG] URL atual da nova aba:", currentUrl);
 
-          // Fechar a nova aba
-          await newPage.close();
-          console.log("[INFO] Nova aba fechada");
-        } else {
-          console.warn("[WARN] Nenhuma nova aba detectada");
+            // Verificar se é uma URL externa (não-LinkedIn)
+            if (currentUrl && !currentUrl.includes('linkedin.com')) {
+                console.log("[INFO] URL externa encontrada");
+                jobDetails.applyUrl = currentUrl;
+            } else {
+                console.log("[INFO] URL do LinkedIn encontrada - usando URL original da vaga");
+                jobDetails.applyUrl = jobUrl;
+            }
+          }
+        } catch (error) {
+          console.warn("[WARN] Erro ao processar nova aba:", error.message);
+          jobDetails.applyUrl = jobUrl;
         }
         
       } else if (buttonText.includes("Candidatura simplificada")) {
@@ -129,12 +135,21 @@ async function getJobDetails(browser, jobUrl, li_at) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
     throw error;
   } finally {
+    if (newPage) {
+      try {
+        await newPage.close();
+        console.log("[INFO] Nova aba fechada com sucesso");
+      } catch (error) {
+        console.warn("[WARN] Erro ao fechar nova aba:", error);
+      }
+    }
+    
     if (page) {
       try {
         await page.close();
         console.log("[INFO] Página principal fechada com sucesso");
       } catch (error) {
-        console.error("[ERROR] Erro ao fechar página principal:", error);
+        console.warn("[WARN] Erro ao fechar página principal:", error);
       }
     }
   }
