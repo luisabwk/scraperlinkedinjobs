@@ -5,7 +5,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
   let page = null;
   let newPage = null;
   let finalUrl = null;
-  let jobDetails = {};  // Movido para o escopo principal
+  let jobDetails = {};
 
   try {
     page = await browser.newPage();
@@ -30,21 +30,15 @@ async function getJobDetails(browser, jobUrl, li_at) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        await page.goto(jobUrl, { 
-          waitUntil: ["domcontentloaded"],
-          timeout: 30000 
-        });
-        break;
-      } catch (error) {
-        retries--;
-        if (retries === 0) throw error;
-        console.log(`[WARN] Tentativa de carregamento falhou, tentando novamente... (${retries} tentativas restantes)`);
-        await new Promise(r => setTimeout(r, 2000));
-      }
-    }
+    await page.goto(jobUrl, { 
+      waitUntil: ["domcontentloaded"],
+      timeout: 30000 
+    });
+
+    // Captura inicial dos links da página
+    const initialLinks = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('a')).map(a => a.href);
+    });
 
     try {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
@@ -76,7 +70,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
         location,
         description,
         format,
-        applyUrl: null  // Inicializar campo
+        applyUrl: null
       };
     });
 
@@ -96,42 +90,57 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
         
-        // Configurar listener para nova aba
-        const newTargetPromise = new Promise(resolve => {
-          browser.once('targetcreated', async target => {
-            try {
-              const newPage = await target.page();
-              resolve(newPage);
-            } catch (error) {
-              console.error("[ERROR] Erro ao criar nova página:", error);
-              resolve(null);
-            }
-          });
+        // Extrair URL do botão antes de clicar
+        const buttonInfo = await page.evaluate(() => {
+          const button = document.querySelector('.jobs-apply-button--top-card');
+          return {
+            href: button ? button.getAttribute('href') : null,
+            onclick: button ? button.getAttribute('onclick') : null,
+            dataset: button ? {...button.dataset} : {}
+          };
+        });
+        
+        console.log("[DEBUG] Informações do botão:", buttonInfo);
+
+        // Configurar listener de requisições
+        const requestUrls = [];
+        page.on('request', request => {
+          const url = request.url();
+          if (url.includes('/jobs/view/apply') || url.includes('jobs/apply')) {
+            requestUrls.push(url);
+          }
         });
 
         // Clicar no botão
         await page.click(applyButtonSelector);
         console.log("[INFO] Botão de candidatura clicado");
 
-        // Aguardar nova aba
-        newPage = await newTargetPromise;
-        
-        if (newPage) {
-          // Aguardar carregamento
-          await new Promise(r => setTimeout(r, 3000));
-          
-          try {
-            finalUrl = await newPage.url();
-            console.log("[INFO] URL capturada na nova aba:", finalUrl);
-            jobDetails.applyUrl = finalUrl;
-          } catch (error) {
-            console.warn("[WARN] Erro ao capturar URL:", error.message);
-            jobDetails.applyUrl = null;
-          }
-        } else {
-          console.warn("[WARN] Nova aba não foi criada");
-          jobDetails.applyUrl = null;
+        // Aguardar um momento para capturar redirecionamentos
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Capturar novos links após o clique
+        const newLinks = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll('a')).map(a => a.href);
+        });
+
+        // Encontrar novos links que não existiam antes
+        const newApplyLinks = newLinks.filter(link => 
+          !initialLinks.includes(link) && 
+          (link.includes('/jobs/view/apply') || link.includes('jobs/apply'))
+        );
+
+        if (requestUrls.length > 0) {
+          finalUrl = requestUrls[requestUrls.length - 1];
+          console.log("[INFO] URL capturada via requisição:", finalUrl);
+        } else if (newApplyLinks.length > 0) {
+          finalUrl = newApplyLinks[0];
+          console.log("[INFO] URL capturada via novos links:", finalUrl);
+        } else if (buttonInfo.href) {
+          finalUrl = buttonInfo.href;
+          console.log("[INFO] URL capturada do atributo href:", finalUrl);
         }
+
+        jobDetails.applyUrl = finalUrl || null;
         
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
@@ -150,20 +159,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
     throw error;
   } finally {
-    // Garantir que a URL foi salva se disponível
-    if (!jobDetails.applyUrl && finalUrl) {
-      jobDetails.applyUrl = finalUrl;
-    }
-
-    // Fechar páginas
-    if (newPage) {
-      try {
-        await newPage.close();
-        console.log("[INFO] Nova aba fechada com sucesso");
-      } catch (error) {
-        console.error("[ERROR] Erro ao fechar nova aba:", error);
-      }
-    }
     if (page) {
       try {
         await page.close();
