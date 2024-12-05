@@ -3,7 +3,6 @@ const puppeteer = require("puppeteer");
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
-  let newPage = null;
   let finalUrl = null;
   let jobDetails = {};
 
@@ -33,11 +32,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
     await page.goto(jobUrl, { 
       waitUntil: ["domcontentloaded"],
       timeout: 30000 
-    });
-
-    // Captura inicial dos links da página
-    const initialLinks = await page.evaluate(() => {
-      return Array.from(document.querySelectorAll('a')).map(a => a.href);
     });
 
     try {
@@ -88,59 +82,20 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
       if (buttonText.includes("Candidatar-se")) {
-        console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
+        console.log("[INFO] Detectada candidatura externa.");
         
-        // Extrair URL do botão antes de clicar
-        const buttonInfo = await page.evaluate(() => {
-          const button = document.querySelector('.jobs-apply-button--top-card');
-          return {
-            href: button ? button.getAttribute('href') : null,
-            onclick: button ? button.getAttribute('onclick') : null,
-            dataset: button ? {...button.dataset} : {}
-          };
-        });
+        // Extrair ID da vaga da URL atual
+        const jobId = jobUrl.match(/view\/(\d+)/)?.[1];
         
-        console.log("[DEBUG] Informações do botão:", buttonInfo);
-
-        // Configurar listener de requisições
-        const requestUrls = [];
-        page.on('request', request => {
-          const url = request.url();
-          if (url.includes('/jobs/view/apply') || url.includes('jobs/apply')) {
-            requestUrls.push(url);
-          }
-        });
-
-        // Clicar no botão
-        await page.click(applyButtonSelector);
-        console.log("[INFO] Botão de candidatura clicado");
-
-        // Aguardar um momento para capturar redirecionamentos
-        await new Promise(r => setTimeout(r, 3000));
-
-        // Capturar novos links após o clique
-        const newLinks = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll('a')).map(a => a.href);
-        });
-
-        // Encontrar novos links que não existiam antes
-        const newApplyLinks = newLinks.filter(link => 
-          !initialLinks.includes(link) && 
-          (link.includes('/jobs/view/apply') || link.includes('jobs/apply'))
-        );
-
-        if (requestUrls.length > 0) {
-          finalUrl = requestUrls[requestUrls.length - 1];
-          console.log("[INFO] URL capturada via requisição:", finalUrl);
-        } else if (newApplyLinks.length > 0) {
-          finalUrl = newApplyLinks[0];
-          console.log("[INFO] URL capturada via novos links:", finalUrl);
-        } else if (buttonInfo.href) {
-          finalUrl = buttonInfo.href;
-          console.log("[INFO] URL capturada do atributo href:", finalUrl);
+        if (jobId) {
+          // Construir URL de aplicação
+          finalUrl = `https://www.linkedin.com/jobs/view/apply/${jobId}/`;
+          console.log("[INFO] URL de aplicação construída:", finalUrl);
+          jobDetails.applyUrl = finalUrl;
+        } else {
+          console.warn("[WARN] Não foi possível extrair ID da vaga");
+          jobDetails.applyUrl = jobUrl;
         }
-
-        jobDetails.applyUrl = finalUrl || null;
         
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
