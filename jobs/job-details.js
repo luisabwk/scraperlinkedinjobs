@@ -71,7 +71,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
         const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
         // Tenta clicar no "Continuar", se aparecer
-        await page.waitForSelector(modalButtonSelector, { timeout: 3000 })
+        await page.waitForSelector(modalButtonSelector, { timeout: 5000 })
           .then(async () => {
             console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
             await page.click(modalButtonSelector);
@@ -80,30 +80,27 @@ async function getJobDetails(browser, jobUrl, li_at) {
             console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
           });
 
-        console.log("[INFO] Aguardando nova aba ser criada...");
+        console.log("[INFO] Aguardando nova aba ou redirecionamento...");
 
         let applyUrl = null;
         try {
-          // Tenta aguardar a criação de uma nova aba
+          // Aumenta o timeout de espera da nova aba
           const newTarget = await browser.waitForTarget(
             target => target.opener() === page.target() && target.type() === 'page',
-            { timeout: 10000 }
+            { timeout: 20000 }
           );
           
           const newTab = await newTarget.page();
-
-          // Aguarda a navegação completa da nova aba
-          await newTab.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+          await newTab.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
 
           applyUrl = newTab.url();
           console.log("[INFO] URL de aplicação encontrada (nova aba):", applyUrl);
           await newTab.close();
-
         } catch (err) {
-          // Se não abrir uma nova aba, pode ser que a mesma aba seja redirecionada
+          // Se não abrir uma nova aba, checa se houve redirecionamento na mesma aba
           console.warn("[WARN] Nenhuma nova aba detectada. Tentando verificar redirecionamento na mesma aba...");
           try {
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
             applyUrl = page.url();
             console.log("[INFO] URL de aplicação encontrada (mesma aba):", applyUrl);
           } catch (err2) {
