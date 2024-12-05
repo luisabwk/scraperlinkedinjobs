@@ -67,10 +67,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Clicando no botão de candidatura...");
         
-        // Contingência caso apareça o modal com botão "Continuar"
         await page.click(applyButtonSelector);
-        const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
         
+        const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
         await page.waitForSelector(modalButtonSelector, { timeout: 3000 })
           .then(async () => {
             console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
@@ -87,7 +86,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
         );
         
         const newTab = await newTarget.page();
-        await newTab.waitForTimeout(2000);
+
+        // Aguarda a navegação completa da nova aba
+        await newTab.waitForNavigation({ waitUntil: 'networkidle2' });
 
         const applyUrl = newTab.url();
         console.log("[INFO] URL de aplicação encontrada:", applyUrl);
