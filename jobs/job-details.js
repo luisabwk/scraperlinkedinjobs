@@ -87,7 +87,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
     try {
       console.log("[INFO] Verificando tipo de candidatura...");
       
-      const applyButtonSelector = '.jobs-apply-button--top-card';
+      const applyButtonSelector = '.jobs-apply-button';
       await page.waitForSelector(applyButtonSelector, { timeout: 10000 });
       
       const buttonText = await page.evaluate((selector) => {
