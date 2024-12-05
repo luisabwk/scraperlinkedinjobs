@@ -29,14 +29,14 @@ function isValidApplyUrl(url, companyName) {
     ];
 
     // Verificar se a URL contém o nome da empresa normalizado
-    if (urlLower.includes(normalizedCompany)) {
-      console.log("[DEBUG] URL contém nome da empresa");
-      return true;
-    }
+    const hasCompanyName = urlLower.includes(normalizedCompany);
+    
+    // Verificar se a URL contém alguma plataforma conhecida
+    const hasPlatform = platforms.some(platform => urlLower.includes(platform));
 
-    // Verificar se a URL é de alguma plataforma conhecida
-    if (platforms.some(platform => urlLower.includes(platform))) {
-      console.log("[DEBUG] URL contém plataforma conhecida");
+    // URL só é válida se contiver AMBOS: nome da empresa E plataforma
+    if (hasCompanyName && hasPlatform) {
+      console.log("[DEBUG] URL contém nome da empresa E plataforma conhecida");
       return true;
     }
 
@@ -117,6 +117,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
     try {
       console.log("[INFO] Verificando tipo de candidatura...");
+      console.log("[DEBUG] Nome da empresa:", jobDetails.company);
       
       const applyButtonSelector = '.jobs-apply-button--top-card';
       await page.waitForSelector(applyButtonSelector, { timeout: 10000 });
