@@ -1,25 +1,68 @@
 const puppeteer = require("puppeteer");
 
+function normalizeCompanyName(name) {
+  return name.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')  // remove acentos
+    .replace(/[^a-z0-9]/g, '')        // remove caracteres especiais
+    .trim();
+}
+
+function isValidApplyUrl(url, companyName) {
+  try {
+    const urlLower = url.toLowerCase();
+    const normalizedCompany = normalizeCompanyName(companyName);
+    
+    // Lista de plataformas conhecidas
+    const platforms = [
+      'gupy.io',
+      'kenoby.com',
+      'lever.co',
+      'greenhouse.io',
+      'abler.com.br',
+      'workday.com',
+      'breezy.hr',
+      'pandape.com',
+      'betterplace.com.br',
+      'netvagas.com.br',
+      'indeed.com'
+    ];
+
+    // Verificar se a URL contém o nome da empresa normalizado
+    if (urlLower.includes(normalizedCompany)) {
+      console.log("[DEBUG] URL contém nome da empresa");
+      return true;
+    }
+
+    // Verificar se a URL é de alguma plataforma conhecida
+    if (platforms.some(platform => urlLower.includes(platform))) {
+      console.log("[DEBUG] URL contém plataforma conhecida");
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
-  let newPage = null;
-  let finalUrl = null;
   let jobDetails = {};
+  const foundUrls = new Set();
 
   try {
     page = await browser.newPage();
-    await page.setDefaultNavigationTimeout(60000);
-    await page.setDefaultTimeout(30000);
     
-    let redirectUrl = null;
+    // Configurar interceptação de requisições para coletar URLs
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const url = request.url();
-      if (request.resourceType() === 'document' && !url.includes('linkedin.com')) {
-        redirectUrl = url;
-        console.log("[DEBUG] URL externa encontrada:", url);
+      if (url && !url.includes('linkedin.com')) {
+        foundUrls.add(url);
       }
+      
       if (request.resourceType() === 'image' || request.resourceType() === 'media' || request.resourceType() === 'font') {
         request.abort();
       } else {
@@ -86,48 +129,29 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
       if (buttonText.includes("Candidatar-se")) {
-        console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
-
-        // Monitorar console da página
-        page.on('console', msg => {
-          const text = msg.text();
-          console.log("[DEBUG] Console da página:", text);
-        });
-
-        // Tentar interceptar a URL através do evento de clique
-        await page.evaluate(() => {
-          window.externalUrl = null;
-          const button = document.querySelector('.jobs-apply-button--top-card');
-          if (button) {
-            console.log("[DEBUG] Atributos do botão:", {
-              href: button.href,
-              onclick: button.onclick?.toString(),
-              dataset: JSON.stringify(button.dataset)
-            });
-          }
-        });
-
-        // Clicar no botão e aguardar possível redirecionamento
-        await Promise.all([
-          page.click(applyButtonSelector),
-          new Promise(resolve => setTimeout(resolve, 5000))
-        ]);
+        console.log("[INFO] Detectada candidatura externa. Procurando URL...");
         
-        console.log("[INFO] Botão de candidatura clicado");
+        // Coletar URLs antes do clique
+        const beforeUrls = new Set(foundUrls);
         
-        // Verificar redirecionamentos
-        if (redirectUrl) {
-          console.log("[INFO] URL de redirecionamento encontrada:", redirectUrl);
-          jobDetails.applyUrl = redirectUrl;
+        // Clicar no botão e aguardar novas URLs
+        await page.click(applyButtonSelector);
+        await new Promise(r => setTimeout(r, 3000));
+        
+        // Procurar por URLs válidas
+        const allUrls = Array.from(foundUrls);
+        console.log("[DEBUG] URLs encontradas:", allUrls);
+        
+        // Filtrar URLs válidas
+        const validUrls = allUrls.filter(url => isValidApplyUrl(url, jobDetails.company));
+        
+        if (validUrls.length > 0) {
+          const applyUrl = validUrls[0];
+          console.log("[INFO] URL de aplicação encontrada:", applyUrl);
+          jobDetails.applyUrl = applyUrl;
         } else {
-          const currentUrl = await page.url();
-          console.log("[DEBUG] URL atual após clique:", currentUrl);
-          
-          if (currentUrl !== jobUrl && !currentUrl.includes('linkedin.com')) {
-            jobDetails.applyUrl = currentUrl;
-          } else {
-            jobDetails.applyUrl = jobUrl;
-          }
+          console.log("[INFO] Nenhuma URL válida encontrada - usando URL original");
+          jobDetails.applyUrl = jobUrl;
         }
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
