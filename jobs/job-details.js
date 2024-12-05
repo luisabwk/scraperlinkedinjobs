@@ -8,7 +8,81 @@ async function getJobDetails(browser, jobUrl, li_at) {
   try {
     page = await browser.newPage();
     
-    // ... (código anterior até a parte do botão) ...
+    await page.setDefaultNavigationTimeout(60000);
+    await page.setDefaultTimeout(30000);
+    
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
+    const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
+    await page.setCookie(...cookies);
+
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
+    );
+
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await page.goto(jobUrl, { 
+          waitUntil: ["domcontentloaded"],
+          timeout: 30000 
+        });
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        console.log(`[WARN] Tentativa de carregamento falhou, tentando novamente... (${retries} tentativas restantes)`);
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    const contentPromise = page.waitForSelector('.jobs-description', { timeout: 20000 })
+      .catch(() => console.warn('[WARN] Timeout ao aguardar descrição da vaga'));
+
+    const headerPromise = page.waitForSelector('.job-details-jobs-unified-top-card__job-title', { timeout: 20000 })
+      .catch(() => console.warn('[WARN] Timeout ao aguardar título da vaga'));
+
+    await Promise.race([contentPromise, headerPromise]);
+
+    try {
+      const seeMoreButtonSelector = ".jobs-description__footer-button";
+      await page.waitForSelector(seeMoreButtonSelector, { timeout: 5000 });
+      await page.click(seeMoreButtonSelector);
+      console.log("[INFO] Botão 'Ver mais' clicado com sucesso.");
+    } catch (error) {
+      console.warn("[WARN] Botão 'Ver mais' não encontrado ou não clicável.");
+    }
+
+    const jobDetails = await page.evaluate(() => {
+      const title = document.querySelector(".job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
+      const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
+      const locationData = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
+      const description = document.querySelector("#job-details")?.innerText.trim() || "";
+      
+      const formatElement = document.querySelector(".job-details-jobs-unified-top-card__job-insight")?.innerText.trim() || "";
+      let format = "";
+      const modalidades = formatElement.match(/(Remoto|Híbrido|Presencial)/i);
+      format = modalidades ? modalidades[0] : "";
+
+      const locationMatch = locationData.match(/^(.*?)(?= ·|$)/);
+      const location = locationMatch ? locationMatch[0].trim() : "";
+
+      return {
+        title,
+        company,
+        location,
+        description,
+        format
+      };
+    });
 
     try {
       console.log("[INFO] Verificando tipo de candidatura...");
