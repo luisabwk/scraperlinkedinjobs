@@ -4,8 +4,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
   let newPage = null;
-  let jobDetails = {};
   let finalUrl = null;
+  let jobDetails = {};
 
   try {
     page = await browser.newPage();
@@ -84,42 +84,54 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
 
-        // Aguardar nova aba ser aberta
+        // Criar Promise para nova aba
         const newPagePromise = new Promise(resolve => {
           browser.once('targetcreated', async target => {
-            const page = await target.page();
-            resolve(page);
+            const newPage = await target.page();
+            resolve(newPage);
           });
         });
 
-        // Clicar no botão e esperar a nova aba
+        // Clicar no botão
         await page.click(applyButtonSelector);
         console.log("[INFO] Botão de candidatura clicado");
 
-        // Aguardar nova aba
+        // Esperar nova aba ser criada
         newPage = await newPagePromise;
         console.log("[DEBUG] Nova aba criada");
 
         if (newPage) {
-            // Aguardar carregamento inicial da nova aba
-            await newPage.waitForNavigation({ waitUntil: 'networkidle0' })
-                .catch(() => console.log("[DEBUG] Timeout no carregamento da nova aba"));
+          // Monitorar mudanças de URL
+          let urlPromise = new Promise(async (resolve) => {
+            let lastUrl = null;
+            
+            // Listener para eventos de navegação
+            newPage.on('load', async () => {
+              const currentUrl = await newPage.url();
+              console.log("[DEBUG] URL atualizada:", currentUrl);
+              if (currentUrl && !currentUrl.includes('linkedin.com')) {
+                lastUrl = currentUrl;
+                resolve(currentUrl);
+              }
+            });
 
-            // Aguardar um pouco mais para garantir carregamento completo
-            await new Promise(r => setTimeout(r, 3000));
+            // Timeout após 10 segundos
+            setTimeout(() => {
+              resolve(lastUrl);
+            }, 10000);
+          });
 
-            // Capturar URL
-            finalUrl = await newPage.url();
-            console.log("[DEBUG] URL capturada na nova aba:", finalUrl);
+          // Esperar URL ser capturada
+          finalUrl = await urlPromise;
+          console.log("[DEBUG] URL final capturada:", finalUrl);
 
-            // Verificar se é URL externa
-            if (finalUrl && !finalUrl.includes('linkedin.com')) {
-                console.log("[INFO] URL externa válida encontrada");
-                jobDetails.applyUrl = finalUrl;
-            } else {
-                console.log("[INFO] URL do LinkedIn encontrada - mantendo URL original");
-                jobDetails.applyUrl = jobUrl;
-            }
+          if (finalUrl && !finalUrl.includes('linkedin.com')) {
+            console.log("[INFO] URL externa válida encontrada");
+            jobDetails.applyUrl = finalUrl;
+          } else {
+            console.log("[INFO] Nenhuma URL externa válida encontrada - mantendo URL original");
+            jobDetails.applyUrl = jobUrl;
+          }
         }
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
@@ -134,18 +146,12 @@ async function getJobDetails(browser, jobUrl, li_at) {
       jobDetails.applyUrl = jobUrl;
     }
 
-    // Garantir que temos a URL antes de retornar
-    if (finalUrl && !jobDetails.applyUrl) {
-      jobDetails.applyUrl = finalUrl;
-    }
-
     return jobDetails;
 
   } catch (error) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
     throw error;
   } finally {
-    // Fechar páginas somente depois de garantir que temos a URL
     if (newPage) {
       try {
         await newPage.close();
