@@ -100,27 +100,35 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
         
-        // Configurar listener para nova aba antes de clicar
-        const newTabPromise = new Promise(resolve => {
-          browser.once('targetcreated', async target => {
-            newPage = await target.page();
-            resolve(newPage);
-          });
+        // Aguardar criação da nova aba
+        const newTargetPromise = new Promise(resolve => {
+          browser.once('targetcreated', target => resolve(target));
         });
 
-        // Clicar no botão e aguardar a nova aba
-        await Promise.all([
-          page.click(applyButtonSelector),
-          newTabPromise.then(async (newPageTarget) => {
-            await newPageTarget.waitForNavigation({ waitUntil: 'networkidle0', timeout: 10000 }).catch(() => {});
-            const finalUrl = await newPageTarget.url();
-            console.log("[INFO] URL da nova aba:", finalUrl);
-            jobDetails.applyUrl = finalUrl;
-          }).catch(error => {
-            console.warn("[WARN] Erro ao processar nova aba:", error.message);
-            jobDetails.applyUrl = null;
-          })
-        ]);
+        // Clicar no botão
+        await page.click(applyButtonSelector);
+        
+        // Aguardar a nova aba ser criada
+        const target = await newTargetPromise;
+        
+        if (target) {
+          // Aguardar a página ser inicializada
+          newPage = await target.page();
+          
+          if (newPage) {
+            // Aguardar a página carregar
+            await new Promise(r => setTimeout(r, 3000));
+            
+            try {
+              const finalUrl = await newPage.url();
+              console.log("[INFO] URL da nova aba:", finalUrl);
+              jobDetails.applyUrl = finalUrl;
+            } catch (urlError) {
+              console.warn("[WARN] Erro ao obter URL da nova aba:", urlError.message);
+              jobDetails.applyUrl = null;
+            }
+          }
+        }
         
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
