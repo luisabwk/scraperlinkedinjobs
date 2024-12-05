@@ -32,15 +32,17 @@ async function getJobDetails(browser, jobUrl, li_at) {
       const locationData = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
       const description = document.querySelector("#job-details")?.innerText.trim() || "";
       
-      // Nova lógica para extrair apenas o formato de trabalho
-      const formatElement = document.querySelector(".job-details-jobs-unified-top-card__job-insight .ltr");
+      // Nova lógica para extrair o formato usando apenas regex
+      const formatElement = document.querySelector(".job-details-jobs-unified-top-card__job-insight")?.innerText.trim() || "";
       let format = "";
-      if (formatElement) {
-        const formatText = formatElement.innerText.trim();
-        // Extrai apenas a primeira palavra (Remoto, Híbrido ou Presencial)
-        const match = formatText.match(/^(Remoto|Híbrido|Presencial)/i);
-        format = match ? match[0] : formatText;
-      }
+
+      // Procura por "Remoto", "Híbrido" ou "Presencial" em qualquer parte do texto
+      const modalidades = formatElement.match(/(Remoto|Híbrido|Presencial)/i);
+      format = modalidades ? modalidades[0] : "";
+
+      // Log para debug
+      console.log("[DEBUG] Texto completo do formato:", formatElement);
+      console.log("[DEBUG] Formato extraído:", format);
 
       // Extrair apenas a informação antes do primeiro caractere '·'
       const locationMatch = locationData.match(/^(.*?)(?= ·|$)/);
