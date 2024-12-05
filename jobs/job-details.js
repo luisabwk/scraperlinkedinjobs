@@ -1,26 +1,9 @@
-const express = require("express");
 const puppeteer = require("puppeteer");
 
-const app = express();
-app.use(express.json());
-
-// Função para obter os detalhes individuais de uma vaga
-async function getJobDetails(jobUrl, li_at) {
+async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
 
-  let browser;
   try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--disable-software-rasterizer",
-      ],
-    });
-
     const page = await browser.newPage();
     // Configurar o cookie 'li_at' para autenticação no LinkedIn
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
@@ -74,50 +57,10 @@ async function getJobDetails(jobUrl, li_at) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
     throw new Error("Erro ao obter detalhes da vaga.");
   } finally {
-    if (browser) {
-      await browser.close();
+    if (page) {
+      await page.close().catch(console.error);
     }
   }
 }
-
-// Novo endpoint para obter os detalhes de uma vaga individual
-app.post("/job-details", async (req, res) => {
-  const { jobUrl, li_at } = req.body;
-
-  if (!jobUrl || !li_at) {
-    return res.status(400).send({ error: "Parâmetros 'jobUrl' e 'li_at' são obrigatórios." });
-  }
-
-  try {
-    const jobDetails = await getJobDetails(jobUrl, li_at);
-    res.status(200).send({ message: "Detalhes da vaga obtidos com sucesso!", jobDetails });
-  } catch (error) {
-    console.error("[ERROR] Ocorreu um erro ao obter os detalhes da vaga:", error);
-    res.status(500).send({ error: error.message });
-  }
-});
-
-// Inicializar o servidor na porta 3001
-const PORT = process.env.PORT || 3001;
-const server = app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
-
-// Capturar sinais de encerramento para fechar o servidor adequadamente
-process.on('SIGTERM', () => {
-  console.log("Encerrando servidor...");
-  server.close(() => {
-    console.log("Servidor encerrado.");
-    process.exit(0);
-  });
-});
-
-process.on('SIGINT', () => {
-  console.log("Encerrando servidor...");
-  server.close(() => {
-    console.log("Servidor encerrado.");
-    process.exit(0);
-  });
-});
 
 module.exports = getJobDetails;
