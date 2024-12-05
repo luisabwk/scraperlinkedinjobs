@@ -5,6 +5,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
   let page = null;
   let newPage = null;
   let finalUrl = null;
+  let jobDetails = {};  // Movido para o escopo principal
 
   try {
     page = await browser.newPage();
@@ -54,7 +55,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.warn("[WARN] Botão 'Ver mais' não encontrado ou não clicável.");
     }
 
-    const jobDetails = await page.evaluate(() => {
+    // Capturar detalhes básicos da vaga
+    jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
       const locationData = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
@@ -73,7 +75,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
         company,
         location,
         description,
-        format
+        format,
+        applyUrl: null  // Inicializar campo
       };
     });
 
@@ -93,40 +96,40 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
         
-        try {
-          // Monitorar nova aba
-          const targetPromise = new Promise(resolve => {
-            const targetHandler = async target => {
+        // Configurar listener para nova aba
+        const newTargetPromise = new Promise(resolve => {
+          browser.once('targetcreated', async target => {
+            try {
               const newPage = await target.page();
-              if (newPage) {
-                console.log("[INFO] Nova aba detectada");
-                // Esperar página carregar
-                await new Promise(r => setTimeout(r, 3000));
-                const url = await newPage.url();
-                console.log("[INFO] URL capturada:", url);
-                finalUrl = url;
-              }
               resolve(newPage);
-            };
-            
-            browser.once('targetcreated', targetHandler);
+            } catch (error) {
+              console.error("[ERROR] Erro ao criar nova página:", error);
+              resolve(null);
+            }
           });
+        });
 
-          // Clicar no botão e aguardar nova aba
-          await page.click(applyButtonSelector);
-          console.log("[INFO] Botão de candidatura clicado");
+        // Clicar no botão
+        await page.click(applyButtonSelector);
+        console.log("[INFO] Botão de candidatura clicado");
+
+        // Aguardar nova aba
+        newPage = await newTargetPromise;
+        
+        if (newPage) {
+          // Aguardar carregamento
+          await new Promise(r => setTimeout(r, 3000));
           
-          newPage = await targetPromise;
-          
-          if (finalUrl) {
-            console.log("[INFO] URL externa capturada com sucesso:", finalUrl);
+          try {
+            finalUrl = await newPage.url();
+            console.log("[INFO] URL capturada na nova aba:", finalUrl);
             jobDetails.applyUrl = finalUrl;
-          } else {
-            console.warn("[WARN] Não foi possível capturar a URL externa");
+          } catch (error) {
+            console.warn("[WARN] Erro ao capturar URL:", error.message);
             jobDetails.applyUrl = null;
           }
-        } catch (error) {
-          console.error("[ERROR] Erro ao processar nova aba:", error);
+        } else {
+          console.warn("[WARN] Nova aba não foi criada");
           jobDetails.applyUrl = null;
         }
         
@@ -143,18 +146,16 @@ async function getJobDetails(browser, jobUrl, li_at) {
       jobDetails.applyUrl = jobUrl;
     }
 
-    return jobDetails;
-
   } catch (error) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
     throw error;
   } finally {
-    // Garantir tempo para capturar a URL
+    // Garantir que a URL foi salva se disponível
     if (!jobDetails.applyUrl && finalUrl) {
       jobDetails.applyUrl = finalUrl;
-      await new Promise(r => setTimeout(r, 1000));
     }
-    
+
+    // Fechar páginas
     if (newPage) {
       try {
         await newPage.close();
@@ -172,6 +173,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
       }
     }
   }
+
+  return jobDetails;
 }
 
 module.exports = getJobDetails;
