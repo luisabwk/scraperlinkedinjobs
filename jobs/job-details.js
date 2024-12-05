@@ -104,7 +104,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
       
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
-      if (buttonText.includes("Candidate-se")) {
+      if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
         
         let externalUrl = null;
