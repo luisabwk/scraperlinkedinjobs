@@ -8,10 +8,9 @@ const app = express();
 
 // Configurações básicas
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json());
 
-// Log de todas as requisições
+// Log de requisições
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
@@ -21,15 +20,14 @@ app.use((req, res, next) => {
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "ok",
-    message: "API está funcionando",
-    port: process.env.PORT || 'default'
+    message: "API está funcionando"
   });
 });
 
-// Endpoint /scrape-jobs
+// Endpoint para scraping de vagas
 app.post("/scrape-jobs", async (req, res) => {
-  console.log("[INFO] Recebida requisição POST /scrape-jobs");
-  console.log("[DEBUG] Body:", JSON.stringify(req.body));
+  console.log("[INFO] Iniciando /scrape-jobs");
+  console.log("[DEBUG] Request body:", JSON.stringify(req.body));
   
   const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
   
@@ -47,7 +45,8 @@ app.post("/scrape-jobs", async (req, res) => {
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
-        "--disable-gpu"
+        "--disable-gpu",
+        "--disable-software-rasterizer",
       ]
     });
 
@@ -59,8 +58,11 @@ app.post("/scrape-jobs", async (req, res) => {
       jobs: jobs.vagas
     });
   } catch (error) {
-    console.error("[ERROR] Erro no scraping:", error);
-    res.status(500).json({ error: error.message });
+    console.error("[ERROR] Erro no /scrape-jobs:", error);
+    res.status(500).json({ 
+      error: "Erro durante o scraping",
+      details: error.message 
+    });
   } finally {
     if (browser) {
       await browser.close().catch(console.error);
@@ -68,39 +70,82 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 });
 
-// As demais rotas permanecem as mesmas...
+// Endpoint para detalhes da vaga
+app.post("/job-details", async (req, res) => {
+  console.log("[INFO] Iniciando /job-details");
+  console.log("[DEBUG] Request body:", JSON.stringify(req.body));
+  
+  const { jobUrl, li_at } = req.body;
+  
+  if (!jobUrl || !li_at) {
+    return res.status(400).json({
+      error: "Parâmetros 'jobUrl' e 'li_at' são obrigatórios."
+    });
+  }
 
-// Configuração simplificada do servidor
-const PORT = process.env.PORT || 3000; // Mudando para porta 3000 como default
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+      ]
+    });
+
+    const jobDetails = await getJobDetails(browser, jobUrl, li_at);
+    
+    res.status(200).json({
+      message: "Detalhes da vaga obtidos com sucesso!",
+      jobDetails
+    });
+  } catch (error) {
+    console.error("[ERROR] Erro no /job-details:", error);
+    res.status(500).json({ 
+      error: "Erro ao obter detalhes da vaga",
+      details: error.message 
+    });
+  } finally {
+    if (browser) {
+      await browser.close().catch(console.error);
+    }
+  }
+});
+
+// Middleware para rotas não encontradas
+app.use((req, res) => {
+  console.log(`[WARN] Rota não encontrada: ${req.method} ${req.path}`);
+  res.status(404).json({ error: "Endpoint não encontrado" });
+});
+
+// Inicialização do servidor
+const PORT = process.env.PORT || 3000;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`[${new Date().toISOString()}] Servidor rodando na porta ${PORT}`);
 });
 
 // Tratamento de erros do servidor
 server.on('error', (error) => {
-  console.error('Erro no servidor:', error);
+  console.error('[ERROR] Erro no servidor:', error);
   if (error.code === 'EADDRINUSE') {
-    console.log(`Porta ${PORT} em uso, tentando próxima porta...`);
-    server.close();
-    const newPort = parseInt(PORT) + 1;
-    app.listen(newPort, '0.0.0.0', () => {
-      console.log(`Servidor rodando na porta ${newPort}`);
-    });
+    console.log(`[WARN] Porta ${PORT} em uso`);
+    process.exit(1);
   }
 });
 
-// Handlers para graceful shutdown
+// Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('SIGTERM recebido. Encerrando servidor...');
-  server.close(() => {
-    process.exit(0);
-  });
+  console.log('[INFO] SIGTERM recebido. Encerrando...');
+  server.close(() => process.exit(0));
 });
 
 process.on('SIGINT', () => {
-  console.log('SIGINT recebido. Encerrando servidor...');
-  server.close(() => {
-    process.exit(0);
-  });
+  console.log('[INFO] SIGINT recebido. Encerrando...');
+  server.close(() => process.exit(0));
 });
+
+module.exports = app;
