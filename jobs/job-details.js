@@ -7,18 +7,21 @@ async function getJobDetails(browser, jobUrl, li_at) {
   try {
     page = await browser.newPage();
     
-    // Interceptar requisições de navegação para capturar redirecionamentos
+    // Habilitar logs de console da página
+    page.on('console', msg => console.log('[PAGE LOG]', msg.text()));
+    
+    // Interceptar requisições de navegação
     let applyUrl = null;
+    await page.setRequestInterception(true);
+    
     page.on('request', request => {
-      if (request.isNavigationRequest() && request.url().includes('jobs/view/apply')) {
-        applyUrl = request.url();
+      const url = request.url();
+      if (request.isNavigationRequest() && (url.includes('jobs/view/apply') || url.includes('jobs/apply'))) {
+        applyUrl = url;
         console.log('[INFO] URL de aplicação capturada:', applyUrl);
       }
       request.continue();
     });
-
-    // Habilitar interceptação de requisições
-    await page.setRequestInterception(true);
 
     // Configurar cookies e user agent
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
@@ -28,10 +31,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
-    // Acessar a página da vaga
     await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
 
-    // Expandir descrição se necessário
     try {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
       await page.waitForSelector(seeMoreButtonSelector, { timeout: 5000 });
@@ -69,17 +70,28 @@ async function getJobDetails(browser, jobUrl, li_at) {
     try {
       console.log("[INFO] Tentando obter URL de aplicação...");
       
-      // Clicar no botão de aplicar
-      await page.waitForSelector('.jobs-apply-button', { timeout: 5000 });
-      await page.click('.jobs-apply-button');
+      // Seletor correto para o botão de aplicar
+      const applyButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
+      
+      await page.waitForSelector(applyButtonSelector, { timeout: 5000 });
+      console.log("[INFO] Botão de aplicar encontrado");
+      
+      // Extrair texto do botão para debug
+      const buttonText = await page.evaluate((selector) => {
+        const button = document.querySelector(selector);
+        return button ? button.textContent.trim() : '';
+      }, applyButtonSelector);
+      
+      console.log("[INFO] Texto do botão:", buttonText);
+      
+      // Clicar no botão
+      await page.click(applyButtonSelector);
       console.log("[INFO] Botão de aplicar clicado");
 
-      // Esperar pelo modal
-      await page.waitForSelector('button[aria-label="Continuar para a aplicação da vaga"]', { timeout: 5000 });
-      await page.click('button[aria-label="Continuar para a aplicação da vaga"]');
-      console.log("[INFO] Botão Continuar clicado");
+      // Aguardar um momento para possível carregamento do modal
+      await new Promise(r => setTimeout(r, 2000));
 
-      // Aguardar um pouco para capturar a URL
+      // Tentar capturar qualquer URL gerada
       await new Promise(r => setTimeout(r, 2000));
       
       // Adicionar a URL capturada aos detalhes
