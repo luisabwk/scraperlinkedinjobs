@@ -3,7 +3,6 @@ const puppeteer = require("puppeteer");
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
-  let applyPage = null;
 
   try {
     page = await browser.newPage();
@@ -13,14 +12,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
-
-    // Configurar listener para novas páginas/popups antes de clicar no botão
-    const pagePromise = new Promise(resolve => {
-      browser.once('targetcreated', async target => {
-        applyPage = await target.page();
-        resolve(applyPage);
-      });
-    });
 
     await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
 
@@ -35,8 +26,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
     await page.waitForSelector(".jobs-box__html-content", { timeout: 10000 });
 
-    // Capturar detalhes iniciais da vaga
-    let jobDetails = await page.evaluate(() => {
+    // Capturar detalhes da vaga incluindo o link externo
+    const jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
       const locationData = document.querySelector(".job-details-jobs-unified-top-card__primary-description-container")?.innerText.trim() || "";
@@ -47,6 +38,15 @@ async function getJobDetails(browser, jobUrl, li_at) {
       const modalidades = formatElement.match(/(Remoto|Híbrido|Presencial)/i);
       format = modalidades ? modalidades[0] : "";
 
+      // Procurar pelo link externo
+      let applyUrl = "";
+      // Primeiro, procura um elemento a que contenha o use com href="#link-external-small"
+      const externalLinkElement = document.querySelector('a:has(use[href="#link-external-small"])');
+      if (externalLinkElement) {
+        applyUrl = externalLinkElement.href || "";
+        console.log("[DEBUG] Link externo encontrado:", applyUrl);
+      }
+
       const locationMatch = locationData.match(/^(.*?)(?= ·|$)/);
       const location = locationMatch ? locationMatch[0].trim() : "";
 
@@ -56,49 +56,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
         location,
         description,
         format,
+        applyUrl
       };
     });
-
-    // Tentar obter o link de aplicação
-    try {
-      console.log("[INFO] Tentando obter link de aplicação...");
-      
-      // Esperar pelo botão inicial de aplicar
-      const applyButtonSelector = '.jobs-apply-button';
-      await page.waitForSelector(applyButtonSelector, { timeout: 5000 });
-      
-      // Clicar no botão inicial
-      await page.click(applyButtonSelector);
-      console.log("[INFO] Botão inicial de aplicação clicado");
-
-      // Esperar pelo modal e o botão Continuar
-      const continueButtonSelector = 'button[aria-label="Continuar para a aplicação da vaga"]';
-      await page.waitForSelector(continueButtonSelector, { timeout: 5000 });
-      
-      // Clicar no botão Continuar e aguardar nova página/popup
-      await page.click(continueButtonSelector);
-      console.log("[INFO] Botão Continuar clicado");
-      
-      const newPage = await pagePromise;
-      
-      // Aguardar um momento para garantir que a URL está carregada
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Pegar a URL da página de aplicação
-      const applyUrl = newPage.url();
-      console.log("[INFO] Link de aplicação obtido:", applyUrl);
-      
-      // Adicionar URL aos detalhes da vaga
-      jobDetails.applyUrl = applyUrl;
-
-      // Fechar a página de aplicação
-      if (newPage) {
-        await newPage.close();
-      }
-    } catch (error) {
-      console.warn("[WARN] Não foi possível obter o link de aplicação:", error.message);
-      jobDetails.applyUrl = null;
-    }
 
     console.log(`[INFO] Detalhes da vaga extraídos com sucesso para: ${jobUrl}`);
     return jobDetails;
