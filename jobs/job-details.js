@@ -7,11 +7,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
   try {
     page = await browser.newPage();
     
-    // Configuração para expor funções do navegador
-    await page.exposeFunction('logClick', async (text) => {
-      console.log('[Click Event]', text);
-    });
-
     // Configurar cookies e user agent
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
     await page.setCookie(...cookies);
@@ -20,12 +15,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
-    // Acessar a página
-    console.log("[INFO] Carregando página...");
     await page.goto(jobUrl, { waitUntil: "networkidle0", timeout: 120000 });
-    console.log("[INFO] Página carregada");
 
-    // Expandir descrição
+    // Expandir descrição se necessário
     try {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
       await page.waitForSelector(seeMoreButtonSelector, { timeout: 5000 });
@@ -35,7 +27,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.warn("[WARN] Botão 'Ver mais' não encontrado ou não clicável.");
     }
 
-    // Capturar detalhes básicos
+    // Capturar detalhes básicos da vaga
     const jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
@@ -59,64 +51,55 @@ async function getJobDetails(browser, jobUrl, li_at) {
       };
     });
 
-    // Tentar obter URL de aplicação
+    // Nova lógica para URL de aplicação
     try {
-      console.log("[INFO] Buscando botão de aplicação...");
-
-      // Injetar listeners para monitorar mudanças na página
-      await page.evaluate(() => {
-        window.addEventListener('click', e => {
-          const element = e.target;
-          if (element.tagName === 'A' && element.href) {
-            window.logClick(`Link clicked: ${element.href}`);
-          }
-          if (element.tagName === 'BUTTON') {
-            window.logClick(`Button clicked: ${element.textContent}`);
-          }
-        }, true);
-      });
-
-      // Aguardar e clicar no botão de aplicar
-      const applyButtonSelector = '.jobs-apply-button';
-      await page.waitForSelector(applyButtonSelector, { visible: true, timeout: 5000 });
+      console.log("[INFO] Verificando tipo de candidatura...");
       
-      // Capturar atributos do botão antes de clicar
-      const buttonInfo = await page.evaluate((selector) => {
+      const applyButtonSelector = '.jobs-apply-button';
+      await page.waitForSelector(applyButtonSelector, { timeout: 5000 });
+      
+      // Capturar o texto do botão
+      const buttonText = await page.evaluate((selector) => {
         const button = document.querySelector(selector);
-        return {
-          text: button.textContent.trim(),
-          href: button.getAttribute('href'),
-          onclick: button.getAttribute('onclick'),
-          dataControl: button.getAttribute('data-control-name'),
-          classes: button.className
-        };
+        return button ? button.textContent.trim() : '';
       }, applyButtonSelector);
       
-      console.log("[INFO] Informações do botão:", buttonInfo);
+      console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
-      // Clicar no botão e monitorar eventos
-      await Promise.all([
-        page.click(applyButtonSelector),
-        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 5000 }).catch(() => {})
-      ]);
+      if (buttonText.includes("Candidate-se")) {
+        console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
+        
+        // Configurar listener para capturar nova URL
+        let externalUrl = null;
+        page.on('request', request => {
+          if (request.isNavigationRequest()) {
+            externalUrl = request.url();
+            console.log('[INFO] URL de redirecionamento capturada:', externalUrl);
+          }
+        });
 
-      // Capturar URL após o clique
-      const currentUrl = page.url();
-      console.log("[INFO] URL após clique:", currentUrl);
-
-      // Verificar se há um formulário de aplicação
-      const formUrl = await page.evaluate(() => {
-        const form = document.querySelector('form[data-control-name*="apply"]');
-        return form ? form.action : null;
-      });
-
-      jobDetails.applyUrl = formUrl || currentUrl;
+        // Clicar no botão e aguardar redirecionamento
+        await page.click(applyButtonSelector);
+        await new Promise(r => setTimeout(r, 2000));
+        
+        jobDetails.applyUrl = externalUrl;
+        console.log("[INFO] URL externa definida:", externalUrl);
+        
+      } else if (buttonText.includes("Candidatura simplificada")) {
+        console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
+        jobDetails.applyUrl = jobUrl;
+        
+      } else {
+        console.log("[WARN] Tipo de candidatura não reconhecido:", buttonText);
+        jobDetails.applyUrl = jobUrl;
+      }
       
     } catch (error) {
-      console.warn("[WARN] Não foi possível obter a URL de aplicação:", error.message);
-      jobDetails.applyUrl = null;
+      console.warn("[WARN] Erro ao processar URL de candidatura:", error.message);
+      jobDetails.applyUrl = jobUrl;
     }
 
+    console.log(`[INFO] Detalhes da vaga extraídos com sucesso para: ${jobUrl}`);
     return jobDetails;
 
   } catch (error) {
@@ -124,7 +107,12 @@ async function getJobDetails(browser, jobUrl, li_at) {
     throw error;
   } finally {
     if (page) {
-      await page.close().catch(console.error);
+      try {
+        await page.close();
+        console.log("[INFO] Página fechada com sucesso");
+      } catch (closeError) {
+        console.error("[ERROR] Erro ao fechar página:", closeError);
+      }
     }
   }
 }
