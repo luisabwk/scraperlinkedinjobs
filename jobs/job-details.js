@@ -1,51 +1,3 @@
-const puppeteer = require("puppeteer");
-
-function normalizeCompanyName(name) {
-  return name.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')  // remove acentos
-    .replace(/[^a-z0-9]/g, '')        // remove caracteres especiais
-    .trim();
-}
-
-function isValidApplyUrl(url, companyName) {
-  try {
-    const urlLower = url.toLowerCase();
-    const normalizedCompany = normalizeCompanyName(companyName);
-    
-    // Lista de plataformas conhecidas
-    const platforms = [
-      'gupy.io',
-      'kenoby.com',
-      'lever.co',
-      'greenhouse.io',
-      'abler.com.br',
-      'workday.com',
-      'breezy.hr',
-      'pandape.com',
-      'betterplace.com.br',
-      'netvagas.com.br',
-      'indeed.com'
-    ];
-
-    // Verificar se a URL contém o nome da empresa normalizado
-    const hasCompanyName = urlLower.includes(normalizedCompany);
-    
-    // Verificar se a URL contém alguma plataforma conhecida
-    const hasPlatform = platforms.some(platform => urlLower.includes(platform));
-
-    // URL só é válida se contiver AMBOS: nome da empresa E plataforma
-    if (hasCompanyName && hasPlatform) {
-      console.log("[DEBUG] URL contém nome da empresa E plataforma conhecida");
-      return true;
-    }
-
-    return false;
-  } catch (error) {
-    return false;
-  }
-}
-
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
@@ -137,7 +89,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
         
         // Clicar no botão e aguardar novas URLs
         await page.click(applyButtonSelector);
-        await page.waitForTimeout(3000);
+        // Substituição da função page.waitForTimeout() por um setTimeout usando uma Promise
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
         // Procurar por URLs válidas
         const allUrls = Array.from(foundUrls);
