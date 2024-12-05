@@ -4,7 +4,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
   let newPage = null;
-  let finalUrl = null; // Nova variável para garantir que capturamos a URL
+  let finalUrl = null;
 
   try {
     page = await browser.newPage();
@@ -44,14 +44,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
         await new Promise(r => setTimeout(r, 2000));
       }
     }
-
-    const contentPromise = page.waitForSelector('.jobs-description', { timeout: 20000 })
-      .catch(() => console.warn('[WARN] Timeout ao aguardar descrição da vaga'));
-
-    const headerPromise = page.waitForSelector('.job-details-jobs-unified-top-card__job-title', { timeout: 20000 })
-      .catch(() => console.warn('[WARN] Timeout ao aguardar título da vaga'));
-
-    await Promise.race([contentPromise, headerPromise]);
 
     try {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
@@ -101,46 +93,40 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
         
-        // Configurar o listener antes de qualquer ação
-        const targetPromise = new Promise((resolve) => {
-          const targetHandler = async (target) => {
-            try {
-              console.log("[INFO] Nova aba detectada");
+        try {
+          // Monitorar nova aba
+          const targetPromise = new Promise(resolve => {
+            const targetHandler = async target => {
               const newPage = await target.page();
               if (newPage) {
-                await new Promise(r => setTimeout(r, 2000)); // Espera inicial
+                console.log("[INFO] Nova aba detectada");
+                // Esperar página carregar
+                await new Promise(r => setTimeout(r, 3000));
                 const url = await newPage.url();
-                console.log("[INFO] URL capturada na nova aba:", url);
-                finalUrl = url; // Guardar a URL
-                resolve(newPage);
+                console.log("[INFO] URL capturada:", url);
+                finalUrl = url;
               }
-            } catch (error) {
-              console.error("[ERROR] Erro ao processar nova aba:", error);
-              resolve(null);
-            }
-          };
-          
-          browser.once('targetcreated', targetHandler);
-          
-          // Timeout seguro
-          setTimeout(() => {
-            browser.removeListener('targetcreated', targetHandler);
-            resolve(null);
-          }, 10000);
-        });
+              resolve(newPage);
+            };
+            
+            browser.once('targetcreated', targetHandler);
+          });
 
-        // Clicar no botão
-        await page.click(applyButtonSelector);
-        console.log("[INFO] Botão de candidatura clicado");
-        
-        // Aguardar a nova aba
-        newPage = await targetPromise;
-        
-        if (finalUrl) {
-          console.log("[INFO] URL externa capturada com sucesso:", finalUrl);
-          jobDetails.applyUrl = finalUrl;
-        } else {
-          console.warn("[WARN] Não foi possível capturar a URL externa");
+          // Clicar no botão e aguardar nova aba
+          await page.click(applyButtonSelector);
+          console.log("[INFO] Botão de candidatura clicado");
+          
+          newPage = await targetPromise;
+          
+          if (finalUrl) {
+            console.log("[INFO] URL externa capturada com sucesso:", finalUrl);
+            jobDetails.applyUrl = finalUrl;
+          } else {
+            console.warn("[WARN] Não foi possível capturar a URL externa");
+            jobDetails.applyUrl = null;
+          }
+        } catch (error) {
+          console.error("[ERROR] Erro ao processar nova aba:", error);
           jobDetails.applyUrl = null;
         }
         
@@ -163,8 +149,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
     throw error;
   } finally {
-    // Garantir que temos tempo de capturar a URL antes de fechar
-    if (finalUrl) {
+    // Garantir tempo para capturar a URL
+    if (!jobDetails.applyUrl && finalUrl) {
+      jobDetails.applyUrl = finalUrl;
       await new Promise(r => setTimeout(r, 1000));
     }
     
