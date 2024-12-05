@@ -7,11 +7,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
   try {
     page = await browser.newPage();
     
-    // Configurações para melhorar performance e evitar timeouts
-    await page.setDefaultNavigationTimeout(60000); // 60 segundos
-    await page.setDefaultTimeout(30000); // 30 segundos para outras operações
+    await page.setDefaultNavigationTimeout(60000);
+    await page.setDefaultTimeout(30000);
     
-    // Otimizar carregamento
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const resourceType = request.resourceType();
@@ -22,7 +20,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
       }
     });
 
-    // Configurar cookies e user agent
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
     await page.setCookie(...cookies);
 
@@ -30,7 +27,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
 
-    // Tentar acessar a página com retentativas
     let retries = 3;
     while (retries > 0) {
       try {
@@ -47,16 +43,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
       }
     }
 
-    // Aguardar carregamento do conteúdo principal
-    const contentPromise = page.waitForSelector('.jobs-description', { timeout: 20000 })
-      .catch(() => console.warn('[WARN] Timeout ao aguardar descrição da vaga'));
-
-    const headerPromise = page.waitForSelector('.job-details-jobs-unified-top-card__job-title', { timeout: 20000 })
-      .catch(() => console.warn('[WARN] Timeout ao aguardar título da vaga'));
-
-    await Promise.race([contentPromise, headerPromise]);
-
-    // Expandir descrição se necessário
     try {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
       await page.waitForSelector(seeMoreButtonSelector, { timeout: 5000 });
@@ -66,7 +52,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.warn("[WARN] Botão 'Ver mais' não encontrado ou não clicável.");
     }
 
-    // Capturar detalhes básicos da vaga
     const jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
@@ -90,11 +75,11 @@ async function getJobDetails(browser, jobUrl, li_at) {
       };
     });
 
-    // Nova lógica para URL de aplicação com timeout reduzido
     try {
       console.log("[INFO] Verificando tipo de candidatura...");
       
-      const applyButtonSelector = '.jobs-apply-button';
+      // Novo seletor do botão
+      const applyButtonSelector = '.jobs-apply-button--top-card';
       await page.waitForSelector(applyButtonSelector, { timeout: 10000 });
       
       const buttonText = await page.evaluate((selector) => {
@@ -104,7 +89,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
       
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
-      if (buttonText.includes("Candidatar-se")) {
+      if (buttonText.includes("Candidate-se")) {
         console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
         
         let externalUrl = null;
