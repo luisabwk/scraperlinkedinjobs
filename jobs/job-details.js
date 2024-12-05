@@ -66,7 +66,21 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Clicando no botão de candidatura...");
-        
+
+        // Intercepta requisições após clicar no botão "Candidatar-se"
+        await page.setRequestInterception(true);
+        let externalUrls = [];
+        page.on('request', (req) => {
+          req.continue();
+        });
+        page.on('requestfinished', (req) => {
+          const url = req.url();
+          // Se a URL for externa e não for do LinkedIn, salvamos ela
+          if (url && !url.includes('linkedin.com')) {
+            externalUrls.push(url);
+          }
+        });
+
         await page.click(applyButtonSelector);
 
         const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
@@ -80,32 +94,40 @@ async function getJobDetails(browser, jobUrl, li_at) {
             console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
           });
 
-        console.log("[INFO] Aguardando nova aba ou redirecionamento...");
+        console.log("[INFO] Aguardando potenciais redirecionamentos ou carregamento de requests...");
+        // Aguarda um tempo para capturar requisições que possam ser o link externo
+        await page.waitForTimeout(5000);
 
         let applyUrl = null;
-        try {
-          // Aumenta o timeout de espera da nova aba
-          const newTarget = await browser.waitForTarget(
-            target => target.opener() === page.target() && target.type() === 'page',
-            { timeout: 20000 }
-          );
-          
-          const newTab = await newTarget.page();
-          await newTab.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
 
-          applyUrl = newTab.url();
-          console.log("[INFO] URL de aplicação encontrada (nova aba):", applyUrl);
-          await newTab.close();
-        } catch (err) {
-          // Se não abrir uma nova aba, checa se houve redirecionamento na mesma aba
-          console.warn("[WARN] Nenhuma nova aba detectada. Tentando verificar redirecionamento na mesma aba...");
+        // Se tiver encontrado URLs externas, pegue a primeira
+        if (externalUrls.length > 0) {
+          applyUrl = externalUrls[0];
+          console.log("[INFO] URL de aplicação encontrada via requisições de rede:", applyUrl);
+        } else {
+          console.warn("[WARN] Nenhuma URL externa detectada por request intercept. Tentando nova aba...");
           try {
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-            applyUrl = page.url();
-            console.log("[INFO] URL de aplicação encontrada (mesma aba):", applyUrl);
-          } catch (err2) {
-            console.warn("[WARN] Nenhum redirecionamento detectado. Mantendo URL original da vaga.");
-            applyUrl = jobUrl;
+            const newTarget = await browser.waitForTarget(
+              target => target.opener() === page.target() && target.type() === 'page',
+              { timeout: 10000 }
+            );
+            
+            const newTab = await newTarget.page();
+            await newTab.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
+
+            applyUrl = newTab.url();
+            console.log("[INFO] URL de aplicação encontrada (nova aba):", applyUrl);
+            await newTab.close();
+          } catch (err) {
+            console.warn("[WARN] Nenhuma nova aba detectada. Tentando verificar redirecionamento na mesma aba...");
+            try {
+              await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
+              applyUrl = page.url();
+              console.log("[INFO] URL de aplicação encontrada (mesma aba):", applyUrl);
+            } catch (err2) {
+              console.warn("[WARN] Nenhum redirecionamento detectado. Mantendo URL original da vaga.");
+              applyUrl = jobUrl;
+            }
           }
         }
 
