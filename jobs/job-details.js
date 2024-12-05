@@ -3,10 +3,14 @@ const puppeteer = require("puppeteer");
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
-  let finalUrl = null;
   let jobDetails = {};
 
   try {
+    // Capturar todas as abas iniciais
+    const initialPages = await browser.pages();
+    const initialPagesCount = initialPages.length;
+    console.log(`[DEBUG] Número inicial de abas: ${initialPagesCount}`);
+
     page = await browser.newPage();
     
     await page.setDefaultNavigationTimeout(60000);
@@ -43,7 +47,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.warn("[WARN] Botão 'Ver mais' não encontrado ou não clicável.");
     }
 
-    // Capturar detalhes básicos da vaga
     jobDetails = await page.evaluate(() => {
       const title = document.querySelector(".job-details-jobs-unified-top-card__job-title")?.innerText.trim() || "";
       const company = document.querySelector(".job-details-jobs-unified-top-card__company-name")?.innerText.trim() || "";
@@ -82,19 +85,31 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
       if (buttonText.includes("Candidatar-se")) {
-        console.log("[INFO] Detectada candidatura externa.");
-        
-        // Extrair ID da vaga da URL atual
-        const jobId = jobUrl.match(/view\/(\d+)/)?.[1];
-        
-        if (jobId) {
-          // Construir URL de aplicação
-          finalUrl = `https://www.linkedin.com/jobs/view/apply/${jobId}/`;
-          console.log("[INFO] URL de aplicação construída:", finalUrl);
-          jobDetails.applyUrl = finalUrl;
+        console.log("[INFO] Detectada candidatura externa. Tentando obter URL...");
+
+        // Clicar no botão
+        await page.click(applyButtonSelector);
+        console.log("[INFO] Botão de candidatura clicado");
+
+        // Esperar um pouco para a nova aba abrir
+        await new Promise(r => setTimeout(r, 2000));
+
+        // Pegar todas as abas após o clique
+        const allPages = await browser.pages();
+        console.log(`[DEBUG] Número de abas após clique: ${allPages.length}`);
+
+        // Encontrar a nova aba (última aba aberta)
+        if (allPages.length > initialPagesCount) {
+          const newPage = allPages[allPages.length - 1];
+          const newUrl = await newPage.url();
+          console.log("[INFO] URL da nova aba:", newUrl);
+          jobDetails.applyUrl = newUrl;
+
+          // Fechar a nova aba
+          await newPage.close();
+          console.log("[INFO] Nova aba fechada");
         } else {
-          console.warn("[WARN] Não foi possível extrair ID da vaga");
-          jobDetails.applyUrl = jobUrl;
+          console.warn("[WARN] Nenhuma nova aba detectada");
         }
         
       } else if (buttonText.includes("Candidatura simplificada")) {
