@@ -63,11 +63,22 @@ async function getJobDetails(browser, jobUrl, li_at) {
     try {
       console.log("[INFO] Tentando obter link de aplicação...");
       
-      // Esperar pelo botão de aplicar
-      await page.waitForSelector('.jobs-apply-button', { timeout: 5000 });
+      // Esperar pelo botão inicial de aplicar
+      const applyButtonSelector = '.jobs-apply-button';
+      await page.waitForSelector(applyButtonSelector, { timeout: 5000 });
       
-      // Clicar no botão e aguardar nova página/popup
-      await page.click('.jobs-apply-button');
+      // Clicar no botão inicial
+      await page.click(applyButtonSelector);
+      console.log("[INFO] Botão inicial de aplicação clicado");
+
+      // Esperar pelo modal e o botão Continuar
+      const continueButtonSelector = 'button[aria-label="Continuar para a aplicação da vaga"]';
+      await page.waitForSelector(continueButtonSelector, { timeout: 5000 });
+      
+      // Clicar no botão Continuar e aguardar nova página/popup
+      await page.click(continueButtonSelector);
+      console.log("[INFO] Botão Continuar clicado");
+      
       const newPage = await pagePromise;
       
       // Aguardar um momento para garantir que a URL está carregada
