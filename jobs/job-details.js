@@ -68,8 +68,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
         console.log("[INFO] Detectada candidatura externa. Clicando no botão de candidatura...");
         
         await page.click(applyButtonSelector);
-        
+
         const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
+        // Tenta clicar no "Continuar", se aparecer
         await page.waitForSelector(modalButtonSelector, { timeout: 3000 })
           .then(async () => {
             console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
@@ -80,21 +81,39 @@ async function getJobDetails(browser, jobUrl, li_at) {
           });
 
         console.log("[INFO] Aguardando nova aba ser criada...");
-        const newTarget = await browser.waitForTarget(
-          target => target.opener() === page.target() && target.type() === 'page',
-          { timeout: 10000 }
-        );
-        
-        const newTab = await newTarget.page();
 
-        // Aguarda a navegação completa da nova aba
-        await newTab.waitForNavigation({ waitUntil: 'networkidle2' });
+        let applyUrl = null;
+        try {
+          // Tenta aguardar a criação de uma nova aba
+          const newTarget = await browser.waitForTarget(
+            target => target.opener() === page.target() && target.type() === 'page',
+            { timeout: 10000 }
+          );
+          
+          const newTab = await newTarget.page();
 
-        const applyUrl = newTab.url();
-        console.log("[INFO] URL de aplicação encontrada:", applyUrl);
+          // Aguarda a navegação completa da nova aba
+          await newTab.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+
+          applyUrl = newTab.url();
+          console.log("[INFO] URL de aplicação encontrada (nova aba):", applyUrl);
+          await newTab.close();
+
+        } catch (err) {
+          // Se não abrir uma nova aba, pode ser que a mesma aba seja redirecionada
+          console.warn("[WARN] Nenhuma nova aba detectada. Tentando verificar redirecionamento na mesma aba...");
+          try {
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+            applyUrl = page.url();
+            console.log("[INFO] URL de aplicação encontrada (mesma aba):", applyUrl);
+          } catch (err2) {
+            console.warn("[WARN] Nenhum redirecionamento detectado. Mantendo URL original da vaga.");
+            applyUrl = jobUrl;
+          }
+        }
+
         jobDetails.applyUrl = applyUrl;
 
-        await newTab.close();
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
         jobDetails.applyUrl = jobUrl;
