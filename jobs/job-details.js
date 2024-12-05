@@ -2,9 +2,10 @@ const puppeteer = require("puppeteer");
 
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
+  let page = null; // Movido para o escopo externo
 
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage(); // Atribuição movida para cá
     // Configurar o cookie 'li_at' para autenticação no LinkedIn
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
     await page.setCookie(...cookies);
@@ -55,10 +56,15 @@ async function getJobDetails(browser, jobUrl, li_at) {
     return jobDetails;
   } catch (error) {
     console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
-    throw new Error("Erro ao obter detalhes da vaga.");
+    throw error; // Lançando o erro original para melhor debugging
   } finally {
     if (page) {
-      await page.close().catch(console.error);
+      try {
+        await page.close();
+        console.log("[INFO] Página fechada com sucesso");
+      } catch (closeError) {
+        console.error("[ERROR] Erro ao fechar página:", closeError);
+      }
     }
   }
 }
