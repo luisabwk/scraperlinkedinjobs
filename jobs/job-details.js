@@ -142,31 +142,113 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Iniciando processo de candidatura...");
         try {
+          // Array para armazenar todos os targets criados
+          const allTargets = [];
+          
           // Criar Promise para capturar nova aba antes de clicar no botão
           const newTabPromise = new Promise((resolve) => {
-            browser.once('targetcreated', async (target) => {
-              console.log("[DEBUG] Novo target criado:", target.type());
+            browser.on('targetcreated', async (target) => {
+              const targetInfo = {
+                type: target.type(),
+                url: target.url(),
+                opener: target.opener() ? await target.opener().url() : null
+              };
+              allTargets.push(targetInfo);
+              
+              console.log("[DEBUG] Novo target detectado:", {
+                tipo: targetInfo.type,
+                url: targetInfo.url,
+                paginaOrigem: targetInfo.opener
+              });
+
               if (target.type() === 'page') {
                 const newPage = await target.page();
+                console.log("[DEBUG] Nova página criada");
+                
+                // Monitor de eventos da nova página
+                newPage.on('console', msg => console.log('[DEBUG] Console da nova página:', msg.text()));
+                newPage.on('error', err => console.log('[DEBUG] Erro na nova página:', err));
+                newPage.on('pageerror', err => console.log('[DEBUG] Erro de página na nova aba:', err));
+                newPage.on('requestfailed', request => console.log('[DEBUG] Requisição falhou na nova aba:', request.url()));
+                newPage.on('response', response => console.log('[DEBUG] Resposta recebida na nova aba:', {
+                  url: response.url(),
+                  status: response.status()
+                }));
+                
                 resolve(newPage);
               }
             });
+
+            // Monitor para outros eventos do browser
+            browser.on('targetchanged', (target) => {
+              console.log('[DEBUG] Target alterado:', {
+                tipo: target.type(),
+                url: target.url()
+              });
+            });
+
+            browser.on('targetdestroyed', (target) => {
+              console.log('[DEBUG] Target destruído:', {
+                tipo: target.type(),
+                url: target.url()
+              });
+            });
           });
+
+          // Estado do botão antes do clique
+          console.log("[DEBUG] Estado do botão antes do clique:", await page.evaluate((selector) => {
+            const button = document.querySelector(selector);
+            return {
+              existe: !!button,
+              visivel: button ? window.getComputedStyle(button).display !== 'none' : false,
+              clicavel: button ? !button.disabled : false,
+              texto: button ? button.textContent : null,
+              html: button ? button.outerHTML : null
+            };
+          }, applyButtonSelector));
 
           // Clicar no botão 'Candidatar-se'
           console.log("[INFO] Clicando no botão 'Candidatar-se'...");
           await page.click(applyButtonSelector);
+          console.log("[INFO] Botão clicado com sucesso");
 
-          console.log("[INFO] Botão clicado com sucesso. Aguardando nova aba...");
-
-          // Aguardar nova aba ser aberta
-          const newPage = await Promise.race([
-            newTabPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout esperando nova aba')), 5000))
-          ]).catch(error => {
-            console.warn("[WARN] Erro aguardando nova aba:", error.message);
-            return null;
+          // Estado da página após o clique
+          console.log("[DEBUG] Estado da página após clique:", {
+            url: await page.url(),
+            titulo: await page.title()
           });
+
+          // Verificar mudanças no DOM após o clique
+          const domChanges = await page.evaluate(() => {
+            return {
+              botaoAindaExiste: !!document.querySelector('.jobs-apply-button--top-card'),
+              modalAberto: !!document.querySelector('[role="dialog"]'),
+              novosBotoes: Array.from(document.querySelectorAll('button')).map(b => ({
+                texto: b.textContent,
+                visivel: window.getComputedStyle(b).display !== 'none'
+              }))
+            };
+          });
+          console.log("[DEBUG] Mudanças no DOM após clique:", domChanges);
+
+          console.log("[INFO] Aguardando nova aba...");
+          
+          // Aguardar nova aba ser aberta com timeout
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => {
+              console.log("[DEBUG] Timeout atingido. Estado final:", {
+                totalTargets: allTargets.length,
+                targets: allTargets
+              });
+              reject(new Error('Timeout esperando nova aba'));
+            }, 5000)
+          );
+
+          const newPage = await Promise.race([newTabPromise, timeoutPromise])
+            .catch(error => {
+              console.warn("[WARN] Erro aguardando nova aba:", error.message);
+              return null;
+            });
 
           let applyUrl = null;
 
