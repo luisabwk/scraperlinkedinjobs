@@ -54,11 +54,22 @@ function isValidApplyUrl(url, companyName) {
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
+  let context = null;
   let jobDetails = {};
   const externalUrls = [];
 
   try {
-    page = await browser.newPage();
+    // Criar contexto incognito com permissão para popups
+    context = await browser.createIncognitoBrowserContext();
+    page = await context.newPage();
+    
+    // Permitir popups e redirecionamentos
+    await page.setDefaultNavigationTimeout(60000);
+    const client = await page.target().createCDPSession();
+    await client.send('Page.setWindowBounds', { windowId: 1, bounds: { windowState: 'normal' } });
+    await client.send('Page.setPermissions', {
+      permissions: ['popups', 'newTab']
+    });
     
     // Configurar interceptação de requisições
     await page.setRequestInterception(true);
@@ -86,6 +97,13 @@ async function getJobDetails(browser, jobUrl, li_at) {
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
     );
+
+    // Configurar popup handler
+    page.setViewport({ width: 1920, height: 1080 });
+    await page._client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: './'
+    });
 
     await page.goto(jobUrl, { 
       waitUntil: ["domcontentloaded"],
@@ -147,7 +165,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
           
           // Criar Promise para capturar nova aba antes de clicar no botão
           const newTabPromise = new Promise((resolve) => {
-            browser.on('targetcreated', async (target) => {
+            context.on('targetcreated', async (target) => {
               const targetInfo = {
                 type: target.type(),
                 url: target.url(),
@@ -180,14 +198,14 @@ async function getJobDetails(browser, jobUrl, li_at) {
             });
 
             // Monitor para outros eventos do browser
-            browser.on('targetchanged', (target) => {
+            context.on('targetchanged', (target) => {
               console.log('[DEBUG] Target alterado:', {
                 tipo: target.type(),
                 url: target.url()
               });
             });
 
-            browser.on('targetdestroyed', (target) => {
+            context.on('targetdestroyed', (target) => {
               console.log('[DEBUG] Target destruído:', {
                 tipo: target.type(),
                 url: target.url()
@@ -207,9 +225,15 @@ async function getJobDetails(browser, jobUrl, li_at) {
             };
           }, applyButtonSelector));
 
-          // Clicar no botão 'Candidatar-se'
-          console.log("[INFO] Clicando no botão 'Candidatar-se'...");
-          await page.click(applyButtonSelector);
+          // Clicar no botão com JavaScript direto
+          await page.evaluate((selector) => {
+            const button = document.querySelector(selector);
+            if (button) {
+              button.click();
+              console.log("Botão clicado via JavaScript");
+            }
+          }, applyButtonSelector);
+          
           console.log("[INFO] Botão clicado com sucesso");
 
           // Estado da página após o clique
@@ -313,6 +337,13 @@ async function getJobDetails(browser, jobUrl, li_at) {
         console.log("[INFO] Página principal fechada com sucesso");
       } catch (error) {
         console.warn("[WARN] Erro ao fechar página principal:", error);
+      }
+    }
+    if (context) {
+      try {
+        await context.close();
+      } catch (error) {
+        console.warn("[WARN] Erro ao fechar contexto:", error);
       }
     }
   }
