@@ -145,6 +145,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
           // Criar Promise para capturar nova aba antes de clicar no botão
           const newTabPromise = new Promise((resolve) => {
             browser.once('targetcreated', async (target) => {
+              console.log("[DEBUG] Novo target criado:", target.type());
               if (target.type() === 'page') {
                 const newPage = await target.page();
                 resolve(newPage);
@@ -152,20 +153,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
             });
           });
 
-          // Verificar existência do modal
-          const modalExists = await page.evaluate(() => {
-            const modalButton = document.querySelector('.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view');
-            return modalButton && modalButton.offsetParent !== null;
-          });
-
-          // Clicar no botão apropriado
-          if (modalExists) {
-            console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
-            await page.click('.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view');
-          } else {
-            console.log("[INFO] Clicando no botão 'Candidatar-se'...");
-            await page.click(applyButtonSelector);
-          }
+          // Clicar no botão 'Candidatar-se'
+          console.log("[INFO] Clicando no botão 'Candidatar-se'...");
+          await page.click(applyButtonSelector);
 
           console.log("[INFO] Botão clicado com sucesso. Aguardando nova aba...");
 
