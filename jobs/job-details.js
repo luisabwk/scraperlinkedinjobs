@@ -1,7 +1,56 @@
+const puppeteer = require("puppeteer");
+
+function normalizeCompanyName(name) {
+  return name.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')  // remove acentos
+    .replace(/[^a-z0-9]/g, '')        // remove caracteres especiais
+    .trim();
+}
+
+function isValidApplyUrl(url, companyName) {
+  try {
+    const urlLower = url.toLowerCase();
+    const normalizedCompany = normalizeCompanyName(companyName);
+    
+    // Lista de plataformas conhecidas
+    const platforms = [
+      'gupy.io',
+      'kenoby.com',
+      'lever.co',
+      'greenhouse.io',
+      'abler.com.br',
+      'workday.com',
+      'breezy.hr',
+      'pandape.com',
+      'betterplace.com.br',
+      'netvagas.com.br',
+      'indeed.com'
+    ];
+
+    // Verificar se a URL contém o nome da empresa normalizado
+    const hasCompanyName = urlLower.includes(normalizedCompany);
+    
+    // Verificar se a URL contém alguma plataforma conhecida
+    const hasPlatform = platforms.some(platform => urlLower.includes(platform));
+
+    // URL só é válida se contiver AMBOS: nome da empresa E plataforma
+    if (hasCompanyName && hasPlatform) {
+      console.log("[DEBUG] URL contém nome da empresa E plataforma conhecida");
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
   let jobDetails = {};
+  let externalUrls = [];
 
   try {
     page = await browser.newPage();
@@ -69,14 +118,13 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
         // Intercepta requisições após clicar no botão "Candidatar-se"
         await page.setRequestInterception(true);
-        let externalUrls = [];
         page.on('request', (req) => {
           req.continue();
         });
         page.on('requestfinished', (req) => {
           const url = req.url();
-          // Se a URL for externa e não for do LinkedIn, salvamos ela
-          if (url && !url.includes('linkedin.com')) {
+          if (url && !url.includes('linkedin.com') && isValidApplyUrl(url, jobDetails.company)) {
+            console.log("[DEBUG] URL potencial encontrada:", url);
             externalUrls.push(url);
           }
         });
@@ -84,23 +132,23 @@ async function getJobDetails(browser, jobUrl, li_at) {
         await page.click(applyButtonSelector);
 
         const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
-        // Tenta clicar no "Continuar", se aparecer
-        await page.waitForSelector(modalButtonSelector, { timeout: 5000 })
-          .then(async () => {
-            console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
-            await page.click(modalButtonSelector);
-          })
-          .catch(() => {
-            console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
-          });
+        try {
+          await page.waitForSelector(modalButtonSelector, { timeout: 5000 });
+          console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
+          await page.click(modalButtonSelector);
+        } catch {
+          console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
+        }
 
         console.log("[INFO] Aguardando potenciais redirecionamentos ou carregamento de requests...");
-        // Aguarda um tempo para capturar requisições que possam ser o link externo
-        await page.waitForTimeout(5000);
+        // Usar Promise.race com timeout em vez de waitForTimeout
+        await Promise.race([
+          new Promise(r => setTimeout(r, 5000)),
+          page.waitForNavigation({ timeout: 5000 }).catch(() => {})
+        ]);
 
         let applyUrl = null;
 
-        // Se tiver encontrado URLs externas, pegue a primeira
         if (externalUrls.length > 0) {
           applyUrl = externalUrls[0];
           console.log("[INFO] URL de aplicação encontrada via requisições de rede:", applyUrl);
@@ -115,23 +163,29 @@ async function getJobDetails(browser, jobUrl, li_at) {
             const newTab = await newTarget.page();
             await newTab.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
 
-            applyUrl = newTab.url();
-            console.log("[INFO] URL de aplicação encontrada (nova aba):", applyUrl);
+            const newUrl = await newTab.url();
+            if (isValidApplyUrl(newUrl, jobDetails.company)) {
+              applyUrl = newUrl;
+              console.log("[INFO] URL de aplicação válida encontrada (nova aba):", applyUrl);
+            }
             await newTab.close();
           } catch (err) {
-            console.warn("[WARN] Nenhuma nova aba detectada. Tentando verificar redirecionamento na mesma aba...");
+            console.warn("[WARN] Nenhuma nova aba detectada ou URL inválida. Tentando verificar redirecionamento na mesma aba...");
             try {
               await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-              applyUrl = page.url();
-              console.log("[INFO] URL de aplicação encontrada (mesma aba):", applyUrl);
+              const currentUrl = await page.url();
+              if (isValidApplyUrl(currentUrl, jobDetails.company)) {
+                applyUrl = currentUrl;
+                console.log("[INFO] URL de aplicação válida encontrada (mesma aba):", applyUrl);
+              }
             } catch (err2) {
-              console.warn("[WARN] Nenhum redirecionamento detectado. Mantendo URL original da vaga.");
+              console.warn("[WARN] Nenhum redirecionamento válido detectado. Mantendo URL original da vaga.");
               applyUrl = jobUrl;
             }
           }
         }
 
-        jobDetails.applyUrl = applyUrl;
+        jobDetails.applyUrl = applyUrl || jobUrl;
 
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
