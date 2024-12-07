@@ -13,7 +13,6 @@ function isValidApplyUrl(url, companyName) {
     const urlLower = url.toLowerCase();
     const normalizedCompany = normalizeCompanyName(companyName);
     
-    // Lista de plataformas conhecidas
     const platforms = [
       'gupy.io',
       'kenoby.com',
@@ -28,20 +27,10 @@ function isValidApplyUrl(url, companyName) {
       'indeed.com'
     ];
 
-    // Verificar se a URL contém o nome da empresa normalizado
     const hasCompanyName = urlLower.includes(normalizedCompany);
-    
-    // Verificar se a URL contém alguma plataforma conhecida
     const hasPlatform = platforms.some(platform => urlLower.includes(platform));
 
-    // URL é válida se contiver OU o nome da empresa OU uma plataforma conhecida
     if (hasCompanyName || hasPlatform) {
-      if (hasCompanyName) {
-        console.log("[DEBUG] URL contém nome da empresa");
-      }
-      if (hasPlatform) {
-        console.log("[DEBUG] URL contém plataforma conhecida");
-      }
       return true;
     }
 
@@ -54,26 +43,31 @@ function isValidApplyUrl(url, companyName) {
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
-  let context = null;
   let jobDetails = {};
   const externalUrls = [];
 
   try {
-    // Criar contexto incognito com permissão para popups
-    context = await browser.createIncognitoBrowserContext();
-    page = await context.newPage();
-    
-    // Permitir popups e redirecionamentos
-    await page.setDefaultNavigationTimeout(60000);
-    const client = await page.target().createCDPSession();
-    await client.send('Page.setWindowBounds', { windowId: 1, bounds: { windowState: 'normal' } });
-    await client.send('Page.setPermissions', {
-      permissions: ['popups', 'newTab']
+    page = await browser.newPage();
+
+    const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
+    await page.setCookie(...cookies);
+
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
+    );
+
+    // Override do window.open para capturar a URL da nova aba
+    await page.evaluateOnNewDocument(() => {
+      const originalOpen = window.open;
+      window.open = function(...args) {
+        window.__NEW_TAB_URL__ = args[0];
+        return originalOpen.apply(window, args);
+      };
     });
-    
-    // Configurar interceptação de requisições
+
+    await page.setViewport({ width: 1920, height: 1080 });
+
     await page.setRequestInterception(true);
-    
     page.on('request', (req) => {
       const resourceType = req.resourceType();
       if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
@@ -83,26 +77,11 @@ async function getJobDetails(browser, jobUrl, li_at) {
       }
     });
     
-    page.on('requestfinished', (req) => {
+    page.on('requestfinished', async (req) => {
       const url = req.url();
-      if (url && !url.includes('linkedin.com') && isValidApplyUrl(url, jobDetails.company)) {
-        console.log("[DEBUG] URL potencial encontrada:", url);
+      if (jobDetails.company && url && !url.includes('linkedin.com') && isValidApplyUrl(url, jobDetails.company)) {
         externalUrls.push(url);
       }
-    });
-
-    const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
-    await page.setCookie(...cookies);
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
-    );
-
-    // Configurar popup handler
-    page.setViewport({ width: 1920, height: 1080 });
-    await page._client.send('Page.setDownloadBehavior', {
-      behavior: 'allow',
-      downloadPath: './'
     });
 
     await page.goto(jobUrl, { 
@@ -159,160 +138,53 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Iniciando processo de candidatura...");
+
+        const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
+
+        // DispatchEvent no botão de candidatura
+        await page.evaluate((selector) => {
+          const btn = document.querySelector(selector);
+          if (btn) {
+            const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+            btn.dispatchEvent(event);
+          }
+        }, applyButtonSelector);
+
+        // Espera e tenta clicar no botão "Continuar"
         try {
-          // Array para armazenar todos os targets criados
-          const allTargets = [];
-          
-          // Criar Promise para capturar nova aba antes de clicar no botão
-          const newTabPromise = new Promise((resolve) => {
-            context.on('targetcreated', async (target) => {
-              const targetInfo = {
-                type: target.type(),
-                url: target.url(),
-                opener: target.opener() ? await target.opener().url() : null
-              };
-              allTargets.push(targetInfo);
-              
-              console.log("[DEBUG] Novo target detectado:", {
-                tipo: targetInfo.type,
-                url: targetInfo.url,
-                paginaOrigem: targetInfo.opener
-              });
-
-              if (target.type() === 'page') {
-                const newPage = await target.page();
-                console.log("[DEBUG] Nova página criada");
-                
-                // Monitor de eventos da nova página
-                newPage.on('console', msg => console.log('[DEBUG] Console da nova página:', msg.text()));
-                newPage.on('error', err => console.log('[DEBUG] Erro na nova página:', err));
-                newPage.on('pageerror', err => console.log('[DEBUG] Erro de página na nova aba:', err));
-                newPage.on('requestfailed', request => console.log('[DEBUG] Requisição falhou na nova aba:', request.url()));
-                newPage.on('response', response => console.log('[DEBUG] Resposta recebida na nova aba:', {
-                  url: response.url(),
-                  status: response.status()
-                }));
-                
-                resolve(newPage);
-              }
-            });
-
-            // Monitor para outros eventos do browser
-            context.on('targetchanged', (target) => {
-              console.log('[DEBUG] Target alterado:', {
-                tipo: target.type(),
-                url: target.url()
-              });
-            });
-
-            context.on('targetdestroyed', (target) => {
-              console.log('[DEBUG] Target destruído:', {
-                tipo: target.type(),
-                url: target.url()
-              });
-            });
-          });
-
-          // Estado do botão antes do clique
-          console.log("[DEBUG] Estado do botão antes do clique:", await page.evaluate((selector) => {
-            const button = document.querySelector(selector);
-            return {
-              existe: !!button,
-              visivel: button ? window.getComputedStyle(button).display !== 'none' : false,
-              clicavel: button ? !button.disabled : false,
-              texto: button ? button.textContent : null,
-              html: button ? button.outerHTML : null
-            };
-          }, applyButtonSelector));
-
-          // Clicar no botão com JavaScript direto
+          await page.waitForSelector(modalButtonSelector, { timeout: 5000 });
           await page.evaluate((selector) => {
-            const button = document.querySelector(selector);
-            if (button) {
-              button.click();
-              console.log("Botão clicado via JavaScript");
+            const btn = document.querySelector(selector);
+            if (btn) {
+              const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+              btn.dispatchEvent(event);
             }
-          }, applyButtonSelector);
-          
-          console.log("[INFO] Botão clicado com sucesso");
-
-          // Estado da página após o clique
-          console.log("[DEBUG] Estado da página após clique:", {
-            url: await page.url(),
-            titulo: await page.title()
-          });
-
-          // Verificar mudanças no DOM após o clique
-          const domChanges = await page.evaluate(() => {
-            return {
-              botaoAindaExiste: !!document.querySelector('.jobs-apply-button--top-card'),
-              modalAberto: !!document.querySelector('[role="dialog"]'),
-              novosBotoes: Array.from(document.querySelectorAll('button')).map(b => ({
-                texto: b.textContent,
-                visivel: window.getComputedStyle(b).display !== 'none'
-              }))
-            };
-          });
-          console.log("[DEBUG] Mudanças no DOM após clique:", domChanges);
-
-          console.log("[INFO] Aguardando nova aba...");
-          
-          // Aguardar nova aba ser aberta com timeout
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => {
-              console.log("[DEBUG] Timeout atingido. Estado final:", {
-                totalTargets: allTargets.length,
-                targets: allTargets
-              });
-              reject(new Error('Timeout esperando nova aba'));
-            }, 5000)
-          );
-
-          const newPage = await Promise.race([newTabPromise, timeoutPromise])
-            .catch(error => {
-              console.warn("[WARN] Erro aguardando nova aba:", error.message);
-              return null;
-            });
-
-          let applyUrl = null;
-
-          if (newPage) {
-            console.log("[INFO] Nova aba detectada");
-            
-            try {
-              // Aguardar navegação na nova aba
-              await newPage.waitForNavigation({ waitUntil: 'networkidle0', timeout: 5000 })
-                .catch(() => console.log("[INFO] Timeout de navegação na nova aba"));
-              
-              const newUrl = await newPage.url();
-              console.log("[DEBUG] URL da nova aba:", newUrl);
-
-              if (isValidApplyUrl(newUrl, jobDetails.company)) {
-                applyUrl = newUrl;
-                console.log("[INFO] URL de aplicação válida encontrada na nova aba");
-              } else {
-                console.log("[INFO] URL da nova aba não é válida para aplicação");
-              }
-
-              await newPage.close();
-              console.log("[INFO] Nova aba fechada");
-            } catch (err) {
-              console.warn("[WARN] Erro ao processar nova aba:", err.message);
-              if (newPage) await newPage.close().catch(() => {});
-            }
-          }
-
-          if (!applyUrl && externalUrls.length > 0) {
-            applyUrl = externalUrls[0];
-            console.log("[INFO] URL de aplicação encontrada via requisições:", applyUrl);
-          }
-
-          jobDetails.applyUrl = applyUrl || jobUrl;
-
-        } catch (error) {
-          console.warn("[WARN] Erro ao processar candidatura:", error.message);
-          jobDetails.applyUrl = jobUrl;
+          }, modalButtonSelector);
+          console.log("[INFO] Modal detectado e botão 'Continuar' clicado.");
+        } catch {
+          console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
         }
+
+        // Aguarda um tempinho para que o window.open seja chamado e capturado
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        let applyUrl = null;
+
+        // Verifica se a função window.open foi chamada e a URL está disponível
+        const possibleNewTabUrl = await page.evaluate(() => window.__NEW_TAB_URL__);
+        if (possibleNewTabUrl && isValidApplyUrl(possibleNewTabUrl, jobDetails.company)) {
+          applyUrl = possibleNewTabUrl;
+          console.log("[INFO] URL de aplicação detectada via override do window.open:", applyUrl);
+        } else if (externalUrls.length > 0) {
+          applyUrl = externalUrls[0];
+          console.log("[INFO] URL de aplicação encontrada via requisições:", applyUrl);
+        } else {
+          console.log("[WARN] Nenhuma URL externa detectada. Mantendo URL original da vaga.");
+          applyUrl = jobUrl;
+        }
+
+        jobDetails.applyUrl = applyUrl;
+
       } else if (buttonText.includes("Candidatura simplificada")) {
         console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
         jobDetails.applyUrl = jobUrl;
@@ -337,13 +209,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
         console.log("[INFO] Página principal fechada com sucesso");
       } catch (error) {
         console.warn("[WARN] Erro ao fechar página principal:", error);
-      }
-    }
-    if (context) {
-      try {
-        await context.close();
-      } catch (error) {
-        console.warn("[WARN] Erro ao fechar contexto:", error);
       }
     }
   }
