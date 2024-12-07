@@ -34,9 +34,14 @@ function isValidApplyUrl(url, companyName) {
     // Verificar se a URL contém alguma plataforma conhecida
     const hasPlatform = platforms.some(platform => urlLower.includes(platform));
 
-    // URL só é válida se contiver AMBOS: nome da empresa E plataforma
-    if (hasCompanyName && hasPlatform) {
-      console.log("[DEBUG] URL contém nome da empresa E plataforma conhecida");
+    // URL é válida se contiver OU o nome da empresa OU uma plataforma conhecida
+    if (hasCompanyName || hasPlatform) {
+      if (hasCompanyName) {
+        console.log("[DEBUG] URL contém nome da empresa");
+      }
+      if (hasPlatform) {
+        console.log("[DEBUG] URL contém plataforma conhecida");
+      }
       return true;
     }
 
@@ -50,7 +55,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
   let page = null;
   let jobDetails = {};
-  let externalUrls = [];
+  const externalUrls = [];
 
   try {
     page = await browser.newPage();
@@ -116,7 +121,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Clicando no botão de candidatura...");
 
-        // Intercepta requisições após clicar no botão "Candidatar-se"
+        // Intercepta requisições após clicar no botão
         await page.setRequestInterception(true);
         page.on('request', (req) => {
           req.continue();
@@ -129,59 +134,54 @@ async function getJobDetails(browser, jobUrl, li_at) {
           }
         });
 
-        await page.click(applyButtonSelector);
+        // Primeiro, verificar se o modal existe antes de tentar clicar
+        const modalExists = await page.evaluate(() => {
+          const modalButton = document.querySelector('.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view');
+          return modalButton && modalButton.offsetParent !== null;  // verifica se o botão está visível
+        });
 
-        const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
-        try {
-          await page.waitForSelector(modalButtonSelector, { timeout: 5000 });
+        // Se o modal existir, clicar no botão Continuar primeiro
+        if (modalExists) {
           console.log("[INFO] Modal detectado. Clicando no botão 'Continuar'...");
-          await page.click(modalButtonSelector);
-        } catch {
-          console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
+          await page.click('.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view');
+          await new Promise(r => setTimeout(r, 1000));  // pequena pausa após clicar no Continuar
         }
 
-        console.log("[INFO] Aguardando potenciais redirecionamentos ou carregamento de requests...");
-        // Usar Promise.race com timeout em vez de waitForTimeout
+        // Se não houver modal, clicar direto no botão Candidatar-se
+        await page.click(applyButtonSelector);
+        console.log("[INFO] Botão de candidatura clicado");
+
+        // Aguardar um curto período para capturar redirecionamentos
         await Promise.race([
-          new Promise(r => setTimeout(r, 5000)),
-          page.waitForNavigation({ timeout: 5000 }).catch(() => {})
+          new Promise(r => setTimeout(r, 3000)),
+          page.waitForNavigation({ timeout: 3000 }).catch(() => {})
         ]);
 
         let applyUrl = null;
 
+        // Verificar URLs coletadas
         if (externalUrls.length > 0) {
           applyUrl = externalUrls[0];
-          console.log("[INFO] URL de aplicação encontrada via requisições de rede:", applyUrl);
+          console.log("[INFO] URL de aplicação encontrada via requisições:", applyUrl);
         } else {
-          console.warn("[WARN] Nenhuma URL externa detectada por request intercept. Tentando nova aba...");
+          // Verificar nova aba
           try {
-            const newTarget = await browser.waitForTarget(
-              target => target.opener() === page.target() && target.type() === 'page',
-              { timeout: 10000 }
-            );
-            
-            const newTab = await newTarget.page();
-            await newTab.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-
-            const newUrl = await newTab.url();
-            if (isValidApplyUrl(newUrl, jobDetails.company)) {
-              applyUrl = newUrl;
-              console.log("[INFO] URL de aplicação válida encontrada (nova aba):", applyUrl);
-            }
-            await newTab.close();
-          } catch (err) {
-            console.warn("[WARN] Nenhuma nova aba detectada ou URL inválida. Tentando verificar redirecionamento na mesma aba...");
-            try {
-              await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-              const currentUrl = await page.url();
-              if (isValidApplyUrl(currentUrl, jobDetails.company)) {
-                applyUrl = currentUrl;
-                console.log("[INFO] URL de aplicação válida encontrada (mesma aba):", applyUrl);
+            const pages = await browser.pages();
+            const newPage = pages[pages.length - 1];
+            if (newPage && newPage !== page) {
+              const newUrl = await newPage.url();
+              console.log("[DEBUG] URL da nova aba:", newUrl);
+              
+              if (isValidApplyUrl(newUrl, jobDetails.company)) {
+                applyUrl = newUrl;
+                console.log("[INFO] URL de aplicação válida encontrada na nova aba");
               }
-            } catch (err2) {
-              console.warn("[WARN] Nenhum redirecionamento válido detectado. Mantendo URL original da vaga.");
-              applyUrl = jobUrl;
+              await newPage.close();
+            } else {
+              console.log("[INFO] Nenhuma nova aba detectada");
             }
+          } catch (err) {
+            console.warn("[WARN] Erro ao verificar novas abas:", err.message);
           }
         }
 
