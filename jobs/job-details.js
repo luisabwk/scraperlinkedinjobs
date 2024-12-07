@@ -142,6 +142,16 @@ async function getJobDetails(browser, jobUrl, li_at) {
       if (buttonText.includes("Candidatar-se")) {
         console.log("[INFO] Detectada candidatura externa. Iniciando processo de candidatura...");
         try {
+          // Criar Promise para capturar nova aba antes de clicar no botão
+          const newTabPromise = new Promise((resolve) => {
+            browser.once('targetcreated', async (target) => {
+              if (target.type() === 'page') {
+                const newPage = await target.page();
+                resolve(newPage);
+              }
+            });
+          });
+
           // Verificar existência do modal
           const modalExists = await page.evaluate(() => {
             const modalButton = document.querySelector('.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view');
@@ -157,43 +167,52 @@ async function getJobDetails(browser, jobUrl, li_at) {
             await page.click(applyButtonSelector);
           }
 
-          console.log("[INFO] Botão clicado com sucesso");
+          console.log("[INFO] Botão clicado com sucesso. Aguardando nova aba...");
 
-          // Aguardar redirecionamentos
-          await Promise.race([
-            new Promise(r => setTimeout(r, 3000)),
-            page.waitForNavigation({ timeout: 3000 }).catch(() => {})
-          ]);
+          // Aguardar nova aba ser aberta
+          const newPage = await Promise.race([
+            newTabPromise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout esperando nova aba')), 5000))
+          ]).catch(error => {
+            console.warn("[WARN] Erro aguardando nova aba:", error.message);
+            return null;
+          });
 
           let applyUrl = null;
 
-          // Verificar URLs coletadas
-          if (externalUrls.length > 0) {
-            applyUrl = externalUrls[0];
-            console.log("[INFO] URL de aplicação encontrada via requisições:", applyUrl);
-          } else {
-            // Verificar nova aba
+          if (newPage) {
+            console.log("[INFO] Nova aba detectada");
+            
             try {
-              const pages = await browser.pages();
-              const newPage = pages[pages.length - 1];
-              if (newPage && newPage !== page) {
-                const newUrl = await newPage.url();
-                console.log("[DEBUG] URL da nova aba:", newUrl);
-                
-                if (isValidApplyUrl(newUrl, jobDetails.company)) {
-                  applyUrl = newUrl;
-                  console.log("[INFO] URL de aplicação válida encontrada na nova aba");
-                }
-                await newPage.close();
+              // Aguardar navegação na nova aba
+              await newPage.waitForNavigation({ waitUntil: 'networkidle0', timeout: 5000 })
+                .catch(() => console.log("[INFO] Timeout de navegação na nova aba"));
+              
+              const newUrl = await newPage.url();
+              console.log("[DEBUG] URL da nova aba:", newUrl);
+
+              if (isValidApplyUrl(newUrl, jobDetails.company)) {
+                applyUrl = newUrl;
+                console.log("[INFO] URL de aplicação válida encontrada na nova aba");
               } else {
-                console.log("[INFO] Nenhuma nova aba detectada");
+                console.log("[INFO] URL da nova aba não é válida para aplicação");
               }
+
+              await newPage.close();
+              console.log("[INFO] Nova aba fechada");
             } catch (err) {
-              console.warn("[WARN] Erro ao verificar novas abas:", err.message);
+              console.warn("[WARN] Erro ao processar nova aba:", err.message);
+              if (newPage) await newPage.close().catch(() => {});
             }
           }
 
+          if (!applyUrl && externalUrls.length > 0) {
+            applyUrl = externalUrls[0];
+            console.log("[INFO] URL de aplicação encontrada via requisições:", applyUrl);
+          }
+
           jobDetails.applyUrl = applyUrl || jobUrl;
+
         } catch (error) {
           console.warn("[WARN] Erro ao processar candidatura:", error.message);
           jobDetails.applyUrl = jobUrl;
