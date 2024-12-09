@@ -30,22 +30,30 @@ class LinkedInAuthManager {
     const page = await browser.newPage();
 
     try {
-      console.log("[AUTH] Iniciando login no LinkedIn");
+      console.log("[AUTH] Iniciando processo de login");
       
       await page.setViewport({ width: 1920, height: 1080 });
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+      console.log("[AUTH] Configurações de viewport e user agent definidas");
 
+      console.log("[AUTH] Acessando página de login");
       await page.goto('https://www.linkedin.com/login', { 
         waitUntil: 'networkidle0',
         timeout: 60000 
       });
+      console.log("[AUTH] Página de login carregada");
 
+      console.log("[AUTH] Aguardando campos de login");
       await page.waitForSelector('#username', { timeout: 10000 });
       await page.waitForSelector('#password', { timeout: 10000 });
+      console.log("[AUTH] Campos de login encontrados");
       
+      console.log("[AUTH] Preenchendo credenciais");
       await page.type('#username', username, { delay: 100 });
       await page.type('#password', password, { delay: 100 });
-      
+      console.log("[AUTH] Credenciais preenchidas");
+
+      console.log("[AUTH] Clicando no botão de login");
       await Promise.all([
         page.waitForNavigation({ 
           waitUntil: 'networkidle0',
@@ -53,31 +61,49 @@ class LinkedInAuthManager {
         }),
         page.click('[type="submit"]')
       ]);
+      console.log("[AUTH] Navegação após login concluída");
 
-      // Aguardar mais tempo após o login
+      console.log("[AUTH] Aguardando estabilização da página");
       await new Promise(r => setTimeout(r, 10000));
 
-      // Verificar se estamos realmente logados
-      const isLoggedIn = await page.evaluate(() => {
+      console.log("[AUTH] Verificando estado do login");
+      const loginState = await page.evaluate(() => {
         const feed = document.querySelector('#global-nav');
         const loginForm = document.querySelector('.login__form');
         const verificationScreen = document.querySelector('#verification-code-input');
         
         if (verificationScreen) {
-          return 'verification';
+          return { state: 'verification', html: document.documentElement.innerHTML };
         }
-        return feed ? 'logged_in' : (loginForm ? 'login_page' : 'unknown');
+        if (feed) {
+          return { state: 'logged_in', html: document.documentElement.innerHTML };
+        }
+        if (loginForm) {
+          return { state: 'login_page', html: document.documentElement.innerHTML };
+        }
+        return { state: 'unknown', html: document.documentElement.innerHTML };
       });
+      
+      console.log("[AUTH] Estado do login:", loginState.state);
+      console.log("[AUTH] HTML da página:", loginState.html.substring(0, 500) + "...");
 
-      if (isLoggedIn === 'login_page') {
-        throw new Error('Login falhou - credenciais inválidas');
+      if (loginState.state === 'login_page') {
+        throw new Error('Login falhou - permaneceu na página de login');
       }
 
+      console.log("[AUTH] Coletando cookies");
       let li_at = null;
       for (let i = 0; i < 3; i++) {
+        console.log(`[AUTH] Tentativa ${i + 1} de obter cookie`);
         const cookies = await page.cookies();
+        console.log("[AUTH] Cookies encontrados:", cookies.map(c => c.name).join(', '));
+        
         li_at = cookies.find(cookie => cookie.name === 'li_at');
-        if (li_at) break;
+        if (li_at) {
+          console.log("[AUTH] Cookie li_at encontrado");
+          break;
+        }
+        console.log("[AUTH] Cookie li_at não encontrado, aguardando 2 segundos");
         await new Promise(r => setTimeout(r, 2000));
       }
 
@@ -85,17 +111,19 @@ class LinkedInAuthManager {
         throw new Error('Cookie não encontrado após login');
       }
 
+      console.log("[AUTH] Validando cookie obtido");
       const isValid = await this.validateCookie(browser, li_at.value);
       if (!isValid) {
         throw new Error('Cookie obtido é inválido');
       }
 
+      console.log("[AUTH] Armazenando cookie no cache");
       this.cookieCache.set(username, {
         value: li_at.value,
         timestamp: Date.now()
       });
       
-      console.log("[AUTH] Login realizado com sucesso");
+      console.log("[AUTH] Login concluído com sucesso");
       return li_at.value;
 
     } catch (error) {
