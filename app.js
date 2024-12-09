@@ -3,20 +3,19 @@ const cors = require("cors");
 const puppeteer = require("puppeteer");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
+const LinkedInAuthManager = require('./auth/linkedinAuth');
 
 const app = express();
-
-// Configurações básicas
 app.use(cors());
 app.use(express.json());
 
-// Log de requisições
+const authManager = new LinkedInAuthManager();
+
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
 
-// Rota de healthcheck
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "ok",
@@ -24,16 +23,12 @@ app.get("/", (req, res) => {
   });
 });
 
-// Endpoint para scraping de vagas
 app.post("/scrape-jobs", async (req, res) => {
-  console.log("[INFO] Iniciando /scrape-jobs");
-  console.log("[DEBUG] Request body:", JSON.stringify(req.body));
+  const { searchTerm, location, username, password, maxJobs = 50 } = req.body;
   
-  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
-  
-  if (!li_at || !searchTerm || !location) {
+  if (!searchTerm || !location || !username || !password) {
     return res.status(400).json({
-      error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios."
+      error: "Parâmetros 'searchTerm', 'location', 'username' e 'password' são obrigatórios."
     });
   }
 
@@ -50,6 +45,7 @@ app.post("/scrape-jobs", async (req, res) => {
       ]
     });
 
+    const li_at = await authManager.getCookie(username, password);
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
     
     res.status(200).json({
@@ -70,16 +66,12 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 });
 
-// Endpoint para detalhes da vaga
 app.post("/job-details", async (req, res) => {
-  console.log("[INFO] Iniciando /job-details");
-  console.log("[DEBUG] Request body:", JSON.stringify(req.body));
+  const { jobUrl, username, password } = req.body;
   
-  const { jobUrl, li_at } = req.body;
-  
-  if (!jobUrl || !li_at) {
+  if (!jobUrl || !username || !password) {
     return res.status(400).json({
-      error: "Parâmetros 'jobUrl' e 'li_at' são obrigatórios."
+      error: "Parâmetros 'jobUrl', 'username' e 'password' são obrigatórios."
     });
   }
 
@@ -96,6 +88,7 @@ app.post("/job-details", async (req, res) => {
       ]
     });
 
+    const li_at = await authManager.getCookie(username, password);
     const jobDetails = await getJobDetails(browser, jobUrl, li_at);
     
     res.status(200).json({
@@ -115,20 +108,17 @@ app.post("/job-details", async (req, res) => {
   }
 });
 
-// Middleware para rotas não encontradas
 app.use((req, res) => {
   console.log(`[WARN] Rota não encontrada: ${req.method} ${req.path}`);
   res.status(404).json({ error: "Endpoint não encontrado" });
 });
 
-// Inicialização do servidor
 const PORT = process.env.PORT || 3000;
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`[${new Date().toISOString()}] Servidor rodando na porta ${PORT}`);
 });
 
-// Tratamento de erros do servidor
 server.on('error', (error) => {
   console.error('[ERROR] Erro no servidor:', error);
   if (error.code === 'EADDRINUSE') {
@@ -137,7 +127,6 @@ server.on('error', (error) => {
   }
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[INFO] SIGTERM recebido. Encerrando...');
   server.close(() => process.exit(0));
