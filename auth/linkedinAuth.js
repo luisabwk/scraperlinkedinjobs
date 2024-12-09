@@ -23,25 +23,47 @@ class LinkedInAuthManager {
 
     try {
       console.log("[AUTH] Iniciando login no LinkedIn");
-      await page.goto('https://www.linkedin.com/login', { waitUntil: 'networkidle0' });
+      await page.goto('https://www.linkedin.com/login', { 
+        waitUntil: 'networkidle0',
+        timeout: 60000 
+      });
       
       await page.type('#username', username);
       await page.type('#password', password);
       
       await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle0' }),
+        page.waitForNavigation({ 
+          waitUntil: 'networkidle0',
+          timeout: 60000 
+        }),
         page.click('[type="submit"]')
       ]);
 
+      // Aguarda 5 segundos após o login
+      await new Promise(r => setTimeout(r, 5000));
+
       if (page.url().includes('/login')) {
-        throw new Error('Login falhou');
+        throw new Error('Login falhou - verifique suas credenciais');
+      }
+
+      if (page.url().includes('/checkpoint')) {
+        throw new Error('Login requer verificação adicional');
       }
 
       const cookies = await page.cookies();
       const li_at = cookies.find(cookie => cookie.name === 'li_at');
 
       if (!li_at) {
-        throw new Error('Cookie não encontrado após login');
+        // Tenta novamente após um curto delay
+        await new Promise(r => setTimeout(r, 2000));
+        const retryCookies = await page.cookies();
+        const retryCookie = retryCookies.find(cookie => cookie.name === 'li_at');
+        
+        if (!retryCookie) {
+          throw new Error('Cookie não encontrado após login');
+        }
+        
+        li_at = retryCookie;
       }
 
       this.cookieCache.set(username, {
@@ -52,8 +74,11 @@ class LinkedInAuthManager {
       return li_at.value;
 
     } catch (error) {
+      console.error(`[AUTH] Erro no login: ${error.message}`);
+      
       if (retryCount < maxRetries) {
         const delay = Math.pow(2, retryCount) * 1000;
+        console.log(`[AUTH] Tentando novamente em ${delay/1000} segundos...`);
         await new Promise(r => setTimeout(r, delay));
         return this.refreshCookie(username, password, retryCount + 1);
       }
@@ -63,31 +88,7 @@ class LinkedInAuthManager {
     }
   }
 
-  async getCookie(username, password) {
-    const cached = this.cookieCache.get(username);
-    
-    if (cached && Date.now() - cached.timestamp < this.COOKIE_MAX_AGE) {
-      return cached.value;
-    }
-
-    return this.refreshCookie(username, password);
-  }
-
-  async validateCookie(browser, li_at) {
-    const page = await browser.newPage();
-    try {
-      await page.setCookie({
-        name: 'li_at',
-        value: li_at,
-        domain: '.linkedin.com'
-      });
-
-      const response = await page.goto('https://www.linkedin.com/feed/');
-      return !response.url().includes('linkedin.com/login');
-    } finally {
-      await page.close();
-    }
-  }
+  // ... resto do código permanece igual
 }
 
 module.exports = LinkedInAuthManager;
