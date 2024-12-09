@@ -32,25 +32,20 @@ class LinkedInAuthManager {
     try {
       console.log("[AUTH] Iniciando login no LinkedIn");
       
-      // Configurar viewport e user agent
       await page.setViewport({ width: 1920, height: 1080 });
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
 
-      // Navegar para página de login
       await page.goto('https://www.linkedin.com/login', { 
         waitUntil: 'networkidle0',
         timeout: 60000 
       });
 
-      // Verificar se os campos de login estão presentes
       await page.waitForSelector('#username', { timeout: 10000 });
       await page.waitForSelector('#password', { timeout: 10000 });
       
-      // Digitar credenciais
-      await page.type('#username', username);
-      await page.type('#password', password);
+      await page.type('#username', username, { delay: 100 });
+      await page.type('#password', password, { delay: 100 });
       
-      // Clicar no botão de login e aguardar navegação
       await Promise.all([
         page.waitForNavigation({ 
           waitUntil: 'networkidle0',
@@ -59,19 +54,25 @@ class LinkedInAuthManager {
         page.click('[type="submit"]')
       ]);
 
-      // Aguardar redirecionamento
-      await new Promise(r => setTimeout(r, 5000));
+      // Aguardar mais tempo após o login
+      await new Promise(r => setTimeout(r, 10000));
 
-      // Verificar se o login foi bem sucedido
-      const currentUrl = page.url();
-      if (currentUrl.includes('/login')) {
+      // Verificar se estamos realmente logados
+      const isLoggedIn = await page.evaluate(() => {
+        const feed = document.querySelector('#global-nav');
+        const loginForm = document.querySelector('.login__form');
+        const verificationScreen = document.querySelector('#verification-code-input');
+        
+        if (verificationScreen) {
+          return 'verification';
+        }
+        return feed ? 'logged_in' : (loginForm ? 'login_page' : 'unknown');
+      });
+
+      if (isLoggedIn === 'login_page') {
         throw new Error('Login falhou - credenciais inválidas');
       }
-      if (currentUrl.includes('/checkpoint')) {
-        throw new Error('Login requer verificação adicional');
-      }
 
-      // Tentar obter o cookie várias vezes
       let li_at = null;
       for (let i = 0; i < 3; i++) {
         const cookies = await page.cookies();
@@ -84,13 +85,11 @@ class LinkedInAuthManager {
         throw new Error('Cookie não encontrado após login');
       }
 
-      // Verificar se o cookie é válido
       const isValid = await this.validateCookie(browser, li_at.value);
       if (!isValid) {
         throw new Error('Cookie obtido é inválido');
       }
 
-      // Armazenar no cache
       this.cookieCache.set(username, {
         value: li_at.value,
         timestamp: Date.now()
@@ -129,13 +128,16 @@ class LinkedInAuthManager {
         domain: '.linkedin.com'
       });
 
-      const response = await page.goto('https://www.linkedin.com/feed/', {
+      await page.goto('https://www.linkedin.com/feed/', {
         waitUntil: 'networkidle0',
         timeout: 30000
       });
 
-      const url = response.url();
-      return !url.includes('linkedin.com/login');
+      const isLoggedIn = await page.evaluate(() => {
+        return !!document.querySelector('#global-nav');
+      });
+
+      return isLoggedIn;
     } catch (error) {
       console.error("[AUTH] Erro ao validar cookie:", error.message);
       return false;
