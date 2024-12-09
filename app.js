@@ -1,35 +1,37 @@
-const express = require("express");
-const cors = require("cors");
 const puppeteer = require("puppeteer");
+const express = require("express");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
-const LinkedInAuthManager = require('./auth/linkedinAuth');
+const LinkedInAuthManager = require("./auth/linkedinAuth");
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 
+// Autenticação e obtenção do cookie li_at
 const authManager = new LinkedInAuthManager();
 
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
+app.post("/auth", async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).send({ error: "Parâmetros 'username' e 'password' são obrigatórios." });
+  }
+
+  try {
+    const cookie = await authManager.getCookie(username, password);
+    res.status(200).send({ message: "Autenticação realizada com sucesso!", li_at: cookie });
+  } catch (error) {
+    console.error("[ERROR] Erro durante a autenticação:", error);
+    res.status(500).send({ error: error.message });
+  }
 });
 
-app.get("/", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    message: "API está funcionando"
-  });
-});
-
+// Endpoint para obter a lista de vagas
 app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location, username, password, maxJobs = 50 } = req.body;
-  
-  if (!searchTerm || !location || !username || !password) {
-    return res.status(400).json({
-      error: "Parâmetros 'searchTerm', 'location', 'username' e 'password' são obrigatórios."
-    });
+  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
+
+  if (!li_at || !searchTerm || !location) {
+    return res.status(400).send({ error: "Parâmetros 'li_at', 'searchTerm' e 'location' são obrigatórios." });
   }
 
   let browser;
@@ -42,37 +44,27 @@ app.post("/scrape-jobs", async (req, res) => {
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-software-rasterizer",
-      ]
+      ],
     });
 
-    const li_at = await authManager.getCookie(username, password);
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
-    
-    res.status(200).json({
-      message: "Scraping realizado com sucesso!",
-      totalVagas: jobs.totalVagas,
-      jobs: jobs.vagas
-    });
+    res.status(200).send({ message: "Scraping realizado com sucesso!", totalVagas: jobs.totalVagas, jobs: jobs.vagas });
   } catch (error) {
-    console.error("[ERROR] Erro no /scrape-jobs:", error);
-    res.status(500).json({ 
-      error: "Erro durante o scraping",
-      details: error.message 
-    });
+    console.error("[ERROR] Ocorreu um erro:", error);
+    res.status(500).send({ error: error.message });
   } finally {
     if (browser) {
-      await browser.close().catch(console.error);
+      await browser.close();
     }
   }
 });
 
+// Endpoint para obter os detalhes de uma vaga individual
 app.post("/job-details", async (req, res) => {
-  const { jobUrl, username, password } = req.body;
-  
-  if (!jobUrl || !username || !password) {
-    return res.status(400).json({
-      error: "Parâmetros 'jobUrl', 'username' e 'password' são obrigatórios."
-    });
+  const { jobUrl, li_at } = req.body;
+
+  if (!jobUrl || !li_at) {
+    return res.status(400).send({ error: "Parâmetros 'jobUrl' e 'li_at' são obrigatórios." });
   }
 
   let browser;
@@ -85,56 +77,25 @@ app.post("/job-details", async (req, res) => {
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-software-rasterizer",
-      ]
+      ],
     });
 
-    const li_at = await authManager.getCookie(username, password);
     const jobDetails = await getJobDetails(browser, jobUrl, li_at);
-    
-    res.status(200).json({
-      message: "Detalhes da vaga obtidos com sucesso!",
-      jobDetails
-    });
+    res.status(200).send({ message: "Detalhes da vaga obtidos com sucesso!", jobDetails });
   } catch (error) {
-    console.error("[ERROR] Erro no /job-details:", error);
-    res.status(500).json({ 
-      error: "Erro ao obter detalhes da vaga",
-      details: error.message 
-    });
+    console.error("[ERROR] Ocorreu um erro ao obter os detalhes da vaga:", error);
+    res.status(500).send({ error: error.message });
   } finally {
     if (browser) {
-      await browser.close().catch(console.error);
+      await browser.close();
     }
   }
 });
 
-app.use((req, res) => {
-  console.log(`[WARN] Rota não encontrada: ${req.method} ${req.path}`);
-  res.status(404).json({ error: "Endpoint não encontrado" });
+// Inicializar o servidor na porta 8080
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
 
-const PORT = process.env.PORT || 3000;
-
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[${new Date().toISOString()}] Servidor rodando na porta ${PORT}`);
-});
-
-server.on('error', (error) => {
-  console.error('[ERROR] Erro no servidor:', error);
-  if (error.code === 'EADDRINUSE') {
-    console.log(`[WARN] Porta ${PORT} em uso`);
-    process.exit(1);
-  }
-});
-
-process.on('SIGTERM', () => {
-  console.log('[INFO] SIGTERM recebido. Encerrando...');
-  server.close(() => process.exit(0));
-});
-
-process.on('SIGINT', () => {
-  console.log('[INFO] SIGINT recebido. Encerrando...');
-  server.close(() => process.exit(0));
-});
-
-module.exports = app;
+module.exports = { authManager, getJobListings, getJobDetails };
