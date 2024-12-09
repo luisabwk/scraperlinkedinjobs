@@ -1,22 +1,12 @@
 const puppeteer = require("puppeteer");
 
 class LinkedInAuthManager {
-  constructor(username, password) {
-    this.username = username;
-    this.password = password;
-    this.currentCookie = null;
-    this.lastUpdateTime = null;
-    this.isRefreshing = false;
-    this.COOKIE_MAX_AGE = 12 * 60 * 60 * 1000; // 12 horas
+  constructor() {
+    this.cookieCache = new Map();
+    this.COOKIE_MAX_AGE = 12 * 60 * 60 * 1000;
   }
 
-  async refreshCookie(retryCount = 0) {
-    if (this.isRefreshing) {
-      console.log("[AUTH] Atualização de cookie já em andamento");
-      return this.currentCookie;
-    }
-
-    this.isRefreshing = true;
+  async refreshCookie(username, password, retryCount = 0) {
     const maxRetries = 3;
     const browser = await puppeteer.launch({
       headless: true,
@@ -32,85 +22,68 @@ class LinkedInAuthManager {
     const page = await browser.newPage();
 
     try {
-      console.log("[AUTH] Iniciando processo de login no LinkedIn");
+      console.log("[AUTH] Iniciando login no LinkedIn");
       await page.goto('https://www.linkedin.com/login', { waitUntil: 'networkidle0' });
       
-      await page.type('#username', this.username);
-      await page.type('#password', this.password);
+      await page.type('#username', username);
+      await page.type('#password', password);
       
       await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
         page.click('[type="submit"]')
       ]);
 
-      const url = page.url();
-      if (url.includes('/login') || url.includes('/checkpoint')) {
-        throw new Error('Login falhou - possível desafio de segurança');
+      if (page.url().includes('/login')) {
+        throw new Error('Login falhou');
       }
 
       const cookies = await page.cookies();
       const li_at = cookies.find(cookie => cookie.name === 'li_at');
 
       if (!li_at) {
-        throw new Error('Cookie li_at não encontrado após login');
+        throw new Error('Cookie não encontrado após login');
       }
 
-      this.currentCookie = li_at.value;
-      this.lastUpdateTime = Date.now();
-      console.log("[AUTH] Cookie atualizado com sucesso");
+      this.cookieCache.set(username, {
+        value: li_at.value,
+        timestamp: Date.now()
+      });
       
-      return this.currentCookie;
+      return li_at.value;
 
     } catch (error) {
-      console.error(`[AUTH] Erro ao atualizar cookie: ${error.message}`);
-      
       if (retryCount < maxRetries) {
         const delay = Math.pow(2, retryCount) * 1000;
-        console.log(`[AUTH] Tentando novamente em ${delay/1000} segundos...`);
         await new Promise(r => setTimeout(r, delay));
-        return this.refreshCookie(retryCount + 1);
+        return this.refreshCookie(username, password, retryCount + 1);
       }
-      
       throw error;
     } finally {
-      this.isRefreshing = false;
       await browser.close();
     }
   }
 
-  async getCookie() {
-    try {
-      if (!this.currentCookie || !this.lastUpdateTime || 
-          Date.now() - this.lastUpdateTime > this.COOKIE_MAX_AGE) {
-        await this.refreshCookie();
-      }
-      return this.currentCookie;
-    } catch (error) {
-      console.error("[AUTH] Erro ao obter cookie:", error);
-      throw error;
+  async getCookie(username, password) {
+    const cached = this.cookieCache.get(username);
+    
+    if (cached && Date.now() - cached.timestamp < this.COOKIE_MAX_AGE) {
+      return cached.value;
     }
+
+    return this.refreshCookie(username, password);
   }
 
-  async validateCookie(browser) {
-    if (!this.currentCookie) return false;
-
+  async validateCookie(browser, li_at) {
     const page = await browser.newPage();
     try {
       await page.setCookie({
         name: 'li_at',
-        value: this.currentCookie,
+        value: li_at,
         domain: '.linkedin.com'
       });
 
-      const response = await page.goto('https://www.linkedin.com/feed/', {
-        waitUntil: 'networkidle0',
-        timeout: 30000
-      });
-
+      const response = await page.goto('https://www.linkedin.com/feed/');
       return !response.url().includes('linkedin.com/login');
-    } catch (error) {
-      console.warn("[AUTH] Erro ao validar cookie:", error.message);
-      return false;
     } finally {
       await page.close();
     }
