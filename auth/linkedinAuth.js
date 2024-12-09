@@ -1,3 +1,5 @@
+const puppeteer = require("puppeteer");
+
 class LinkedInAuthManager {
   constructor() {
     this.cookieCache = new Map();
@@ -66,6 +68,7 @@ class LinkedInAuthManager {
         timestamp: Date.now()
       });
       
+      console.log("[AUTH] Login realizado com sucesso");
       return li_at.value;
 
     } catch (error) {
@@ -79,11 +82,15 @@ class LinkedInAuthManager {
       }
       throw error;
     } finally {
-      await browser.close();
+      if (browser) {
+        await browser.close();
+      }
     }
   }
 
   async validateCookie(browser, li_at) {
+    if (!browser || !li_at) return false;
+
     const page = await browser.newPage();
     try {
       await page.setCookie({
@@ -94,8 +101,13 @@ class LinkedInAuthManager {
 
       const response = await page.goto('https://www.linkedin.com/feed/');
       return !response.url().includes('linkedin.com/login');
+    } catch (error) {
+      console.error("[AUTH] Erro ao validar cookie:", error.message);
+      return false;
     } finally {
-      await page.close();
+      if (page) {
+        await page.close();
+      }
     }
   }
 }
