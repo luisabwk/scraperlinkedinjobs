@@ -1,9 +1,15 @@
-const puppeteer = require("puppeteer");
-
 class LinkedInAuthManager {
   constructor() {
     this.cookieCache = new Map();
     this.COOKIE_MAX_AGE = 12 * 60 * 60 * 1000;
+  }
+
+  async getCookie(username, password) {
+    const cached = this.cookieCache.get(username);
+    if (cached && Date.now() - cached.timestamp < this.COOKIE_MAX_AGE) {
+      return cached.value;
+    }
+    return this.refreshCookie(username, password);
   }
 
   async refreshCookie(username, password, retryCount = 0) {
@@ -39,31 +45,20 @@ class LinkedInAuthManager {
         page.click('[type="submit"]')
       ]);
 
-      // Aguarda 5 segundos após o login
       await new Promise(r => setTimeout(r, 5000));
 
-      if (page.url().includes('/login')) {
-        throw new Error('Login falhou - verifique suas credenciais');
-      }
-
-      if (page.url().includes('/checkpoint')) {
-        throw new Error('Login requer verificação adicional');
-      }
-
+      let li_at = null;
       const cookies = await page.cookies();
-      const li_at = cookies.find(cookie => cookie.name === 'li_at');
+      li_at = cookies.find(cookie => cookie.name === 'li_at');
 
       if (!li_at) {
-        // Tenta novamente após um curto delay
         await new Promise(r => setTimeout(r, 2000));
         const retryCookies = await page.cookies();
-        const retryCookie = retryCookies.find(cookie => cookie.name === 'li_at');
+        li_at = retryCookies.find(cookie => cookie.name === 'li_at');
         
-        if (!retryCookie) {
+        if (!li_at) {
           throw new Error('Cookie não encontrado após login');
         }
-        
-        li_at = retryCookie;
       }
 
       this.cookieCache.set(username, {
@@ -88,7 +83,21 @@ class LinkedInAuthManager {
     }
   }
 
-  // ... resto do código permanece igual
+  async validateCookie(browser, li_at) {
+    const page = await browser.newPage();
+    try {
+      await page.setCookie({
+        name: 'li_at',
+        value: li_at,
+        domain: '.linkedin.com'
+      });
+
+      const response = await page.goto('https://www.linkedin.com/feed/');
+      return !response.url().includes('linkedin.com/login');
+    } finally {
+      await page.close();
+    }
+  }
 }
 
 module.exports = LinkedInAuthManager;
