@@ -4,36 +4,26 @@ FROM node:20-slim
 # Configure ambiente para evitar prompts interativos
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN=true
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
-# Instale dependências essenciais
+# Instale o Chrome
 RUN apt-get update && apt-get install -y \
     wget \
-    curl \
     gnupg \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator3-1 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-glib-1-2 \
-    libgbm1 \
-    libgdk-pixbuf2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    lsb-release \
-    xdg-utils \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxrandr2 \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y \
+    google-chrome-stable \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-freefont-ttf \
     libxss1 \
-    libasound2 \
-    libdrm2 \
-    libgbm-dev \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false
 
 # Define diretório de trabalho
 WORKDIR /app
@@ -42,10 +32,16 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instala dependências do projeto
-RUN npm install --production
+RUN npm ci --only=production
 
 # Copia os arquivos restantes do projeto
 COPY . .
+
+# Cria estrutura de diretórios necessária
+RUN mkdir -p /app/auth /app/jobs
+
+# Define variáveis de ambiente para o Puppeteer
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
 
 # Expõe a porta do servidor
 EXPOSE 8080
