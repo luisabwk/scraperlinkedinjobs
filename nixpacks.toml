@@ -1,7 +1,5 @@
 [phases.setup]
-nixPkgs = [
-  "nodejs_20",
-  "npm-9_x",
+aptPkgs = [
   "libnss3",
   "libatk1.0-0",
   "libatk-bridge2.0-0",
@@ -12,12 +10,17 @@ nixPkgs = [
   "libxss1",
   "libgtk-3-0",
   "libxshmfence1",
-  "libglu1",
-  "google-chrome-stable"
+  "libglu1"
 ]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = [
+  "wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
+  "apt-get update",
+  "apt-get install -y ./google-chrome-stable_current_amd64.deb",
+  "rm google-chrome-stable_current_amd64.deb",
+  "npm ci"
+]
 
 [start]
 cmd = "node app.js"
