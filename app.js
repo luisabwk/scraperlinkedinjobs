@@ -16,11 +16,6 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
 
 async function initializeBrowser() {
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    console.error("[ERROR] Max reconnection attempts reached");
-    process.exit(1);
-  }
-
   try {
     browser = await puppeteer.launch({
       headless: "new",
@@ -29,31 +24,24 @@ async function initializeBrowser() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--single-process',
-        '--no-zygote',
-        '--disable-extensions',
         '--disable-software-rasterizer',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding'
+        '--disable-features=site-per-process',
+        '--memory-pressure-off',
+        '--single-process',
+        '--deterministic-fetch'
       ],
       ignoreHTTPSErrors: true,
+      timeout: 30000,
+      waitForInitialPage: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
     });
 
-    console.log("[INFO] Browser initialized successfully");
-    
-    browser.on('disconnected', async () => {
-      reconnectAttempts++;
-      console.log(`[WARN] Browser disconnected. Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
-      await initializeBrowser();
-    });
+    console.log("[INFO] Browser initialized");
 
-    reconnectAttempts = 0;
-
+    return browser;
   } catch (error) {
     console.error("[ERROR] Browser initialization failed:", error);
-    process.exit(1);
+    throw error;
   }
 }
 
@@ -68,9 +56,11 @@ app.post("/scrape-jobs", async (req, res) => {
   }
 
   try {
-    const li_at = await authenticateLinkedIn({ email: username }, username, password);
-    console.log("[INFO] Authentication successful");
+    if (!browser || !browser.isConnected()) {
+      browser = await initializeBrowser();
+    }
 
+    const li_at = await authenticateLinkedIn(username, password);
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
     res.status(200).json(jobs);
   } catch (error) {
@@ -90,7 +80,11 @@ app.post("/job-details", async (req, res) => {
   }
 
   try {
-    const li_at = await authenticateLinkedIn({ email: username }, username, password);
+    if (!browser || !browser.isConnected()) {
+      browser = await initializeBrowser();
+    }
+
+    const li_at = await authenticateLinkedIn(username, password);
     const jobDetails = await getJobDetails(browser, jobUrl, li_at);
     res.status(200).json({ success: true, jobDetails });
   } catch (error) {
@@ -103,36 +97,15 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     status: "healthy",
     timestamp: new Date().toISOString(),
-    browserStatus: browser && !browser.disconnected ? "connected" : "disconnected",
-    reconnectAttempts
+    browserStatus: browser?.isConnected() ? "connected" : "disconnected"
   });
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[ERROR] Unhandled Rejection:', reason);
-  if (reason.message?.includes('browser')) {
-    initializeBrowser().catch(console.error);
-  }
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('[ERROR] Uncaught Exception:', error);
-  if (error.message?.includes('browser')) {
-    initializeBrowser().catch(console.error);
-  }
-});
-
-process.on('SIGTERM', async () => {
-  console.log('[INFO] SIGTERM received. Cleaning up...');
-  if (browser) await browser.close();
-  process.exit(0);
 });
 
 const PORT = process.env.PORT || 8080;
 
 async function startServer() {
   try {
-    await initializeBrowser();
+    browser = await initializeBrowser();
     app.listen(PORT, () => {
       console.log(`[INFO] Server running on port ${PORT}`);
     });
