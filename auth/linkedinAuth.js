@@ -40,36 +40,62 @@ async function getVerificationCodeFromEmail(emailConfig) {
 async function authenticateLinkedIn(emailConfig, username, password) {
   const browser = await puppeteer.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+    ]
   });
 
   const page = await browser.newPage();
 
   try {
-    await page.goto("https://www.linkedin.com/login", { waitUntil: "domcontentloaded" });
+    console.log("[AUTH] Iniciando processo de login");
+    await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
+
+    console.log("[AUTH] Preenchendo credenciais");
     await page.type("#username", username);
     await page.type("#password", password);
-    await page.click(".btn__primary--large");
 
-    try {
-      await page.waitForSelector(".input_verification_pin", { timeout: 5000 });
-      const verificationCode = await getVerificationCodeFromEmail(emailConfig);
-      await page.type(".input_verification_pin", verificationCode);
-      await page.click(".btn__primary--large");
-    } catch (error) {
-      console.log("[INFO] Verificação adicional não foi necessária.");
+    console.log("[AUTH] Submetendo login");
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle0' }),
+      page.click(".btn__primary--large")
+    ]);
+
+    // Verificar se há necessidade de verificação
+    const pageTitle = await page.title();
+    if (pageTitle.includes('Security Verification')) {
+      console.log("[AUTH] Verificação de segurança detectada");
+      try {
+        const verificationCode = await getVerificationCodeFromEmail(emailConfig);
+        console.log("[AUTH] Código de verificação obtido");
+        await page.type(".input_verification_pin", verificationCode);
+        await page.click(".btn__primary--large");
+      } catch (error) {
+        throw new Error(`Falha na verificação: ${error.message}`);
+      }
     }
 
-    await page.waitForSelector("body", { timeout: 30000 });
+    // Aguardar navegação e cookies
+    await page.waitForNavigation({ waitUntil: 'networkidle0' });
+    console.log("[AUTH] Login realizado, buscando cookie");
+
     const cookies = await page.cookies();
     const liAtCookie = cookies.find((cookie) => cookie.name === "li_at");
 
-    if (liAtCookie) {
-      return liAtCookie.value;
-    } else {
-      throw new Error("Cookie li_at não encontrado.");
+    if (!liAtCookie) {
+      throw new Error("Cookie li_at não encontrado após login.");
     }
+
+    console.log("[AUTH] Cookie li_at obtido com sucesso");
+    return liAtCookie.value;
+
   } catch (error) {
+    console.error("[AUTH] Erro durante autenticação:", error.message);
     throw new Error(`Erro ao autenticar no LinkedIn: ${error.message}`);
   } finally {
     await browser.close();
