@@ -3,8 +3,9 @@ FROM node:20-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV PORT=8080
 
-# Install dependencies and Chrome
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
