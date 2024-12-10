@@ -12,8 +12,15 @@ app.use(express.json());
 app.use(cors());
 
 let browser;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
 
 async function initializeBrowser() {
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error("[ERROR] Max reconnection attempts reached");
+    process.exit(1);
+  }
+
   try {
     browser = await puppeteer.launch({
       headless: "new",
@@ -22,22 +29,31 @@ async function initializeBrowser() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
         '--single-process',
-        '--disable-extensions'
+        '--no-zygote',
+        '--disable-extensions',
+        '--disable-software-rasterizer',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
       ],
+      ignoreHTTPSErrors: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
     });
+
     console.log("[INFO] Browser initialized successfully");
     
     browser.on('disconnected', async () => {
-      console.log("[WARN] Browser disconnected. Reinitializing...");
+      reconnectAttempts++;
+      console.log(`[WARN] Browser disconnected. Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
       await initializeBrowser();
     });
+
+    reconnectAttempts = 0;
+
   } catch (error) {
     console.error("[ERROR] Browser initialization failed:", error);
-    throw error;
+    process.exit(1);
   }
 }
 
@@ -87,7 +103,8 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     status: "healthy",
     timestamp: new Date().toISOString(),
-    browserStatus: browser && !browser.disconnected ? "connected" : "disconnected"
+    browserStatus: browser && !browser.disconnected ? "connected" : "disconnected",
+    reconnectAttempts
   });
 });
 
