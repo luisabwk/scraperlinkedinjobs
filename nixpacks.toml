@@ -1,5 +1,6 @@
 [phases.setup]
 aptPkgs = [
+  "wget",
   "libnss3",
   "libatk1.0-0",
   "libatk-bridge2.0-0",
@@ -15,8 +16,8 @@ aptPkgs = [
 
 [phases.install]
 cmds = [
-  "wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
   "apt-get update",
+  "wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb",
   "apt-get install -y ./google-chrome-stable_current_amd64.deb",
   "rm google-chrome-stable_current_amd64.deb",
   "npm ci"
