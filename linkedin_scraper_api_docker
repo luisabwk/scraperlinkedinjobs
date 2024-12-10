@@ -1,35 +1,39 @@
-# Usa uma imagem Node.js recente como base
+# Use uma imagem Node.js otimizada
 FROM node:20-slim
 
-# Instala dependências essenciais para o Chromium e outras bibliotecas necessárias
+# Configure ambiente para evitar prompts interativos
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBCONF_NONINTERACTIVE_SEEN=true
+
+# Instale dependências essenciais
 RUN apt-get update && apt-get install -y \
-  wget \
-  curl \
-  gnupg \
-  ca-certificates \
-  fonts-liberation \
-  libappindicator3-1 \
-  libatk-bridge2.0-0 \
-  libatk1.0-0 \
-  libcups2 \
-  libdbus-glib-1-2 \
-  libgbm1 \
-  libgdk-pixbuf2.0-0 \
-  libgtk-3-0 \
-  libnspr4 \
-  libnss3 \
-  lsb-release \
-  xdg-utils \
-  libx11-xcb1 \
-  libxcomposite1 \
-  libxcursor1 \
-  libxdamage1 \
-  libxrandr2 \
-  libxss1 \
-  libasound2 \
-  libdrm2 \
-  libgbm-dev \
-  && apt-get clean && rm -rf /var/lib/apt/lists/*
+    wget \
+    curl \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libappindicator3-1 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-glib-1-2 \
+    libgbm1 \
+    libgdk-pixbuf2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    lsb-release \
+    xdg-utils \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxss1 \
+    libasound2 \
+    libdrm2 \
+    libgbm-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Define diretório de trabalho
 WORKDIR /app
@@ -37,14 +41,14 @@ WORKDIR /app
 # Copia arquivos package.json e package-lock.json
 COPY package*.json ./
 
-# Instala dependências com cache do Railway
+# Instala dependências do projeto
 RUN npm install --production
 
 # Copia os arquivos restantes do projeto
 COPY . .
 
-# Expõe a porta do Railway
+# Expõe a porta do servidor
 EXPOSE 8080
 
-# Comando para iniciar o servidor
+# Comando para iniciar a aplicação
 CMD ["npm", "start"]
