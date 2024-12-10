@@ -12,6 +12,10 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
   }
 
   const page = await browser.newPage();
+  await page.setViewport({ width: 1920, height: 1080 });
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+  );
 
   try {
     const cookies = [
@@ -24,11 +28,20 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     await page.setCookie(...cookies);
     console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
 
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
-    );
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const resourceType = req.resourceType();
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
 
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
+    await page.goto(baseUrl, { 
+      waitUntil: "networkidle0",
+      timeout: 60000 
+    });
     console.log("[INFO] Página inicial acessada com sucesso.");
 
     let totalPages = 1;
@@ -46,8 +59,14 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
       console.info(`[INFO] Scraping página ${currentPage} de ${totalPages}...`);
 
-      const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
-      await page.goto(pageURL, { waitUntil: "domcontentloaded", timeout: 120000 });
+      if (currentPage > 1) {
+        const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
+        await page.goto(pageURL, { 
+          waitUntil: "networkidle0",
+          timeout: 60000 
+        });
+      }
+
       await page.waitForSelector('.scaffold-layout__list', { timeout: 10000 });
 
       const jobsResult = await page.evaluate(() => {
@@ -104,7 +123,7 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     return { totalVagas: allJobs.length, vagas: allJobs.slice(0, maxJobs) };
   } catch (error) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
-    throw new Error("Erro durante o scraping.");
+    throw new Error(`Erro durante o scraping: ${error.message}`);
   } finally {
     await page.close();
   }
