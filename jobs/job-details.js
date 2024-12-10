@@ -3,8 +3,8 @@ const puppeteer = require("puppeteer");
 function normalizeCompanyName(name) {
   return name.toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')  // remove acentos
-    .replace(/[^a-z0-9]/g, '')        // remove caracteres especiais
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
     .trim();
 }
 
@@ -48,24 +48,14 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
   try {
     page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    );
 
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
     await page.setCookie(...cookies);
-
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
-    );
-
-    // Override do window.open para capturar a URL da nova aba
-    await page.evaluateOnNewDocument(() => {
-      const originalOpen = window.open;
-      window.open = function(...args) {
-        window.__NEW_TAB_URL__ = args[0];
-        return originalOpen.apply(window, args);
-      };
-    });
-
-    await page.setViewport({ width: 1920, height: 1080 });
 
     await page.setRequestInterception(true);
     page.on('request', (req) => {
@@ -76,16 +66,24 @@ async function getJobDetails(browser, jobUrl, li_at) {
         req.continue();
       }
     });
-    
-    page.on('requestfinished', async (req) => {
+
+    page.on('requestfinished', (req) => {
       const url = req.url();
-      if (jobDetails.company && url && !url.includes('linkedin.com') && isValidApplyUrl(url, jobDetails.company)) {
+      if (url && !url.includes('linkedin.com')) {
         externalUrls.push(url);
       }
     });
 
+    // Configurar captura de eventos de popup/nova aba
+    const popupPromise = new Promise(resolve => {
+      browser.once('targetcreated', async target => {
+        const newPage = await target.page();
+        resolve(newPage);
+      });
+    });
+
     await page.goto(jobUrl, { 
-      waitUntil: ["domcontentloaded"],
+      waitUntil: "networkidle0",
       timeout: 30000 
     });
 
@@ -137,81 +135,14 @@ async function getJobDetails(browser, jobUrl, li_at) {
       console.log("[INFO] Texto do botão de candidatura:", buttonText);
 
       if (buttonText.includes("Candidatar-se")) {
-        console.log("[INFO] Detectada candidatura externa. Iniciando processo de candidatura...");
+        console.log("[INFO] Detectada candidatura externa.");
+        
+        // Clicar no botão e aguardar popup
+        await page.click(applyButtonSelector);
+        console.log("[INFO] Botão de candidatura clicado");
 
-        const modalButtonSelector = '.jobs-apply-button.artdeco-button.artdeco-button--icon-right.artdeco-button--3.artdeco-button--primary.ember-view';
-
-        // DispatchEvent no botão de candidatura
-        await page.evaluate((selector) => {
-          const btn = document.querySelector(selector);
-          if (btn) {
-            const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-            btn.dispatchEvent(event);
-          }
-        }, applyButtonSelector);
-
-        // Espera e tenta clicar no botão "Continuar"
-        try {
-          await page.waitForSelector(modalButtonSelector, { timeout: 5000 });
-          await page.evaluate((selector) => {
-            const btn = document.querySelector(selector);
-            if (btn) {
-              const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-              btn.dispatchEvent(event);
-            }
-          }, modalButtonSelector);
-          console.log("[INFO] Modal detectado e botão 'Continuar' clicado.");
-        } catch {
-          console.log("[INFO] Nenhum modal com botão 'Continuar' detectado. Prosseguindo normalmente.");
-        }
-
-        // Aguarda um tempinho para que o window.open seja chamado e capturado
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        let applyUrl = null;
-
-        // Verifica se a função window.open foi chamada e a URL está disponível
-        const possibleNewTabUrl = await page.evaluate(() => window.__NEW_TAB_URL__);
-        if (possibleNewTabUrl && isValidApplyUrl(possibleNewTabUrl, jobDetails.company)) {
-          applyUrl = possibleNewTabUrl;
-          console.log("[INFO] URL de aplicação detectada via override do window.open:", applyUrl);
-        } else if (externalUrls.length > 0) {
-          applyUrl = externalUrls[0];
-          console.log("[INFO] URL de aplicação encontrada via requisições:", applyUrl);
-        } else {
-          console.log("[WARN] Nenhuma URL externa detectada. Mantendo URL original da vaga.");
-          applyUrl = jobUrl;
-        }
-
-        jobDetails.applyUrl = applyUrl;
-
-      } else if (buttonText.includes("Candidatura simplificada")) {
-        console.log("[INFO] Detectada candidatura simplificada. Usando URL original.");
-        jobDetails.applyUrl = jobUrl;
-      } else {
-        console.log("[WARN] Tipo de candidatura não reconhecido:", buttonText);
-        jobDetails.applyUrl = jobUrl;
-      }
-    } catch (error) {
-      console.warn("[WARN] Erro ao processar URL de candidatura:", error.message);
-      jobDetails.applyUrl = jobUrl;
-    }
-
-    return jobDetails;
-
-  } catch (error) {
-    console.error(`[ERROR] Falha ao obter detalhes da vaga: ${error.message}`);
-    throw error;
-  } finally {
-    if (page) {
-      try {
-        await page.close();
-        console.log("[INFO] Página principal fechada com sucesso");
-      } catch (error) {
-        console.warn("[WARN] Erro ao fechar página principal:", error);
-      }
-    }
-  }
-}
-
-module.exports = getJobDetails;
+        // Aguardar nova aba ou popup
+        const newPage = await Promise.race([
+          popupPromise,
+          new Promise((_, reject) => setTimeout(() => reject("timeout"), 5000))
+        ]).catch(error => {
