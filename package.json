@@ -13,8 +13,7 @@
     "axios": "^1.6.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "imap-simple": "^6.0.0",
-    "mailparser": "^3.9.0"
+    "mailparser": "^3.10.1"
   },
   "engines": {
     "node": "20.x"
