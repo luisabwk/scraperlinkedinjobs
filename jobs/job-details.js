@@ -27,24 +27,16 @@ function isValidApplyUrl(url, companyName) {
       'indeed.com'
     ];
 
-    const hasCompanyName = urlLower.includes(normalizedCompany);
-    const hasPlatform = platforms.some(platform => urlLower.includes(platform));
-
-    if (hasCompanyName || hasPlatform) {
-      return true;
-    }
-
-    return false;
+    return urlLower.includes(normalizedCompany) || platforms.some(platform => urlLower.includes(platform));
   } catch (error) {
     return false;
   }
 }
 
 async function getJobDetails(browser, jobUrl, li_at) {
-  console.log(`[INFO] Acessando detalhes da vaga: ${jobUrl}`);
+  console.log(`[INFO] Accessing job details: ${jobUrl}`);
   let page = null;
   let jobDetails = {};
-  const externalUrls = [];
 
   try {
     page = await browser.newPage();
@@ -67,21 +59,6 @@ async function getJobDetails(browser, jobUrl, li_at) {
       }
     });
 
-    page.on('requestfinished', (req) => {
-      const url = req.url();
-      if (url && !url.includes('linkedin.com')) {
-        externalUrls.push(url);
-      }
-    });
-
-    // Configurar captura de eventos de popup/nova aba
-    const popupPromise = new Promise(resolve => {
-      browser.once('targetcreated', async target => {
-        const newPage = await target.page();
-        resolve(newPage);
-      });
-    });
-
     await page.goto(jobUrl, { 
       waitUntil: "networkidle0",
       timeout: 30000 
@@ -91,9 +68,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
       await page.waitForSelector(seeMoreButtonSelector, { timeout: 5000 });
       await page.click(seeMoreButtonSelector);
-      console.log("[INFO] Botão 'Ver mais' clicado com sucesso.");
     } catch (error) {
-      console.warn("[WARN] Botão 'Ver mais' não encontrado ou não clicável.");
+      console.warn("[WARN] 'See more' button not found or not clickable");
     }
 
     jobDetails = await page.evaluate(() => {
@@ -103,9 +79,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
       const description = document.querySelector("#job-details")?.innerText.trim() || "";
       
       const formatElement = document.querySelector(".job-details-jobs-unified-top-card__job-insight")?.innerText.trim() || "";
-      let format = "";
       const modalidades = formatElement.match(/(Remoto|Híbrido|Presencial)/i);
-      format = modalidades ? modalidades[0] : "";
+      const format = modalidades ? modalidades[0] : "";
 
       const locationMatch = locationData.match(/^(.*?)(?= ·|$)/);
       const location = locationMatch ? locationMatch[0].trim() : "";
@@ -121,28 +96,40 @@ async function getJobDetails(browser, jobUrl, li_at) {
     });
 
     try {
-      console.log("[INFO] Verificando tipo de candidatura...");
-      console.log("[DEBUG] Nome da empresa:", jobDetails.company);
-      
+      console.log("[INFO] Checking application type...");
       const applyButtonSelector = '.jobs-apply-button--top-card';
       await page.waitForSelector(applyButtonSelector, { timeout: 10000 });
       
-      const buttonText = await page.evaluate((selector) => {
-        const button = document.querySelector(selector);
-        return button ? button.textContent.trim() : '';
-      }, applyButtonSelector);
-      
-      console.log("[INFO] Texto do botão de candidatura:", buttonText);
+      if (await page.$(applyButtonSelector)) {
+        await Promise.race([
+          page.click(applyButtonSelector),
+          new Promise(resolve => setTimeout(resolve, 5000))
+        ]);
 
-      if (buttonText.includes("Candidatar-se")) {
-        console.log("[INFO] Detectada candidatura externa.");
-        
-        // Clicar no botão e aguardar popup
-        await page.click(applyButtonSelector);
-        console.log("[INFO] Botão de candidatura clicado");
+        const newTarget = await browser.waitForTarget(
+          target => target.url() !== page.url(),
+          { timeout: 5000 }
+        );
 
-        // Aguardar nova aba ou popup
-        const newPage = await Promise.race([
-          popupPromise,
-          new Promise((_, reject) => setTimeout(() => reject("timeout"), 5000))
-        ]).catch(error => {
+        if (newTarget) {
+          const applyUrl = newTarget.url();
+          if (isValidApplyUrl(applyUrl, jobDetails.company)) {
+            jobDetails.applyUrl = applyUrl;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("[WARN] Could not get application URL:", error.message);
+    }
+
+    return jobDetails;
+
+  } catch (error) {
+    console.error("[ERROR] Failed to get job details:", error);
+    throw new Error(`Error getting job details: ${error.message}`);
+  } finally {
+    if (page) await page.close();
+  }
+}
+
+module.exports = getJobDetails;
