@@ -10,19 +10,24 @@ const getVerificationCodeFromEmail = async () => {
       host: process.env.EMAIL_HOST,
       port: parseInt(process.env.EMAIL_PORT) || 993,
       tls: true,
-      authTimeout: 3000,
-      tlsOptions: { rejectUnauthorized: false }
+      tlsOptions: { rejectUnauthorized: false },
+      authTimeout: 10000,
+      keepalive: true,
+      debug: console.log
     }
   };
 
   try {
     console.log("[AUTH] Connecting to email server...");
+    console.log(`[AUTH] Using email: ${config.imap.user}`);
     const connection = await imap.connect(config);
+    
     await connection.openBox("INBOX");
+    console.log("[AUTH] Connected to inbox");
 
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 10;
 
     while (attempts < maxAttempts) {
       console.log(`[AUTH] Searching for verification email (attempt ${attempts + 1}/${maxAttempts})`);
@@ -34,32 +39,38 @@ const getVerificationCodeFromEmail = async () => {
         ["SINCE", new Date(Date.now() - 1000 * 60 * 5)]
       ];
       
-      const fetchOptions = { bodies: ["HEADER.FIELDS (SUBJECT)", "TEXT"], markSeen: true };
+      const fetchOptions = { 
+        bodies: ["TEXT", "HEADER"], 
+        markSeen: false 
+      };
+
       const messages = await connection.search(searchCriteria, fetchOptions);
+      console.log(`[AUTH] Found ${messages.length} messages`);
 
       for (const message of messages) {
-        const subject = message.parts.find(part => part.which === "HEADER.FIELDS (SUBJECT)");
-        const body = message.parts.find(part => part.which === "TEXT");
-
-        if (subject && body) {
-          const verificationCode = body.body.match(/\b\d{6}\b/);
-          if (verificationCode) {
-            connection.end();
-            return verificationCode[0];
+        const text = message.parts.find(part => part.which === "TEXT");
+        if (text) {
+          const matches = text.body.match(/\b\d{6}\b/);
+          if (matches) {
+            await connection.end();
+            console.log("[AUTH] Verification code found");
+            return matches[0];
           }
         }
       }
 
       attempts++;
       if (attempts < maxAttempts) {
-        await delay(10000);
+        console.log("[AUTH] No code found, waiting before next attempt...");
+        await delay(5000);
       }
     }
 
-    connection.end();
-    throw new Error("Verification code not found after maximum attempts");
+    await connection.end();
+    throw new Error("No verification code found after maximum attempts");
   } catch (error) {
-    throw new Error(`Failed to get verification code: ${error.message}`);
+    console.error("[AUTH] Email error:", error);
+    throw new Error(`Email verification failed: ${error.message}`);
   }
 };
 
@@ -73,17 +84,27 @@ const authenticateLinkedIn = async (username, password) => {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-features=site-per-process',
+        '--memory-pressure-off',
         '--single-process',
-        '--disable-extensions'
+        '--deterministic-fetch'
       ],
+      ignoreHTTPSErrors: true,
+      timeout: 30000,
+      waitForInitialPage: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
     });
 
     const page = await authBrowser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+    await page.setDefaultNavigationTimeout(30000);
 
     console.log("[AUTH] Starting login process");
-    await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
+    await page.goto("https://www.linkedin.com/login", { 
+      waitUntil: "networkidle0",
+      timeout: 30000 
+    });
 
     console.log("[AUTH] Filling credentials");
     await page.type("#username", username);
@@ -91,7 +112,7 @@ const authenticateLinkedIn = async (username, password) => {
 
     console.log("[AUTH] Submitting login");
     await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle0' }),
+      page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
       page.click(".btn__primary--large")
     ]);
 
@@ -105,7 +126,7 @@ const authenticateLinkedIn = async (username, password) => {
         
         await page.type(".input_verification_pin", verificationCode);
         await Promise.all([
-          page.waitForNavigation({ waitUntil: 'networkidle0' }),
+          page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 }),
           page.click(".btn__primary--large")
         ]);
       } catch (error) {
@@ -127,9 +148,7 @@ const authenticateLinkedIn = async (username, password) => {
     console.error("[AUTH] Authentication failed:", error.message);
     throw new Error(`LinkedIn authentication failed: ${error.message}`);
   } finally {
-    if (authBrowser) {
-      await authBrowser.close();
-    }
+    if (authBrowser) await authBrowser.close();
   }
 };
 
