@@ -8,7 +8,6 @@ const getJobDetails = require("./jobs/job-details");
 require('dotenv').config();
 
 const app = express();
-
 app.use(express.json());
 app.use(cors());
 
@@ -30,6 +29,7 @@ async function initializeBrowser() {
       ],
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
     });
+    console.log("[INFO] Browser initialized successfully");
     
     browser.on('disconnected', async () => {
       console.log("[WARN] Browser disconnected. Reinitializing...");
@@ -41,36 +41,20 @@ async function initializeBrowser() {
   }
 }
 
-app.post("/auth", async (req, res) => {
-  const { username, password, emailConfig } = req.body;
-
-  if (!username || !password || !emailConfig) {
-    return res.status(400).json({
-      error: "Missing parameters",
-      required: ['username', 'password', 'emailConfig']
-    });
-  }
-
-  try {
-    const liAtCookie = await authenticateLinkedIn(emailConfig, username, password);
-    res.status(200).json({ success: true, li_at: liAtCookie });
-  } catch (error) {
-    console.error("[ERROR] Authentication failed:", error);
-    res.status(401).json({ error: error.message });
-  }
-});
-
 app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
+  const { searchTerm, location, username, password, maxJobs = 50 } = req.body;
 
-  if (!searchTerm || !location || !li_at) {
+  if (!searchTerm || !location || !username || !password) {
     return res.status(400).json({
       error: "Missing parameters",
-      required: ['searchTerm', 'location', 'li_at']
+      required: ['searchTerm', 'location', 'username', 'password']
     });
   }
 
   try {
+    const li_at = await authenticateLinkedIn({ email: username }, username, password);
+    console.log("[INFO] Authentication successful");
+
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
     res.status(200).json(jobs);
   } catch (error) {
@@ -80,16 +64,17 @@ app.post("/scrape-jobs", async (req, res) => {
 });
 
 app.post("/job-details", async (req, res) => {
-  const { jobUrl, li_at } = req.body;
+  const { jobUrl, username, password } = req.body;
 
-  if (!jobUrl || !li_at) {
+  if (!jobUrl || !username || !password) {
     return res.status(400).json({
       error: "Missing parameters",
-      required: ['jobUrl', 'li_at']
+      required: ['jobUrl', 'username', 'password']
     });
   }
 
   try {
+    const li_at = await authenticateLinkedIn({ email: username }, username, password);
     const jobDetails = await getJobDetails(browser, jobUrl, li_at);
     res.status(200).json({ success: true, jobDetails });
   } catch (error) {
