@@ -103,7 +103,7 @@ const authenticateLinkedIn = async (credentials) => {
 
     const page = await browser.newPage();
     await page.setDefaultTimeout(120000);
-    await page.setDefaultNavigationTimeout(120000);
+    await page.setDefaultNavigationTimeout(180000);
     
     console.log("[AUTH] Starting login process");
     await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
