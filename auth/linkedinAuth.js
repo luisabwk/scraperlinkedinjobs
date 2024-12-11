@@ -28,20 +28,24 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
       
       const searchCriteria = [
         ["FROM", "security-noreply@linkedin.com"],
-        ["SUBJECT", /Aqui está seu código de verificação \d{6}/],
         ["SINCE", new Date(Date.now() - 1000 * 60 * 5)]
       ];
       
       const fetchOptions = { bodies: ["HEADER.FIELDS (SUBJECT)"], markSeen: false };
       const messages = await connection.search(searchCriteria, fetchOptions);
+      console.log(`[EMAIL] Found ${messages.length} messages from LinkedIn`);
 
       for (const message of messages) {
         const subject = message.parts[0].body.subject[0];
-        const codeMatch = subject.match(/\d{6}/);
-        if (codeMatch) {
-          console.log("[EMAIL] Verification code found");
-          await connection.end();
-          return codeMatch[0];
+        console.log(`[EMAIL] Processing subject: ${subject}`);
+        
+        if (subject.includes("código de verificação")) {
+          const codeMatch = subject.match(/\d{6}/);
+          if (codeMatch) {
+            console.log("[EMAIL] Verification code found");
+            await connection.end();
+            return codeMatch[0];
+          }
         }
       }
 
