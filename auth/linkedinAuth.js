@@ -27,6 +27,7 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
     });
 
     const connection = await imap.connect(config);
+    console.log("[EMAIL] Connecting to inbox...");
     await connection.openBox("INBOX");
     console.log("[EMAIL] Connected to inbox successfully");
     
@@ -62,11 +63,16 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
             await connection.end();
             return codeMatch[0];
           }
+        } else {
+          console.log("[EMAIL] No LinkedIn email found in latest message.");
         }
+      } else {
+        console.log("[EMAIL] No messages matching criteria.");
       }
 
       attempts++;
       if (attempts < maxAttempts) {
+        console.log("[EMAIL] Retrying in 5 seconds...");
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
@@ -82,9 +88,10 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
 const authenticateLinkedIn = async (credentials) => {
   let browser;
   try {
+    console.log("[AUTH] Launching browser...");
     browser = await puppeteerExtra.launch({
       headless: "new",
-      protocolTimeout: 60000,
+      protocolTimeout: 120000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -95,8 +102,8 @@ const authenticateLinkedIn = async (credentials) => {
     });
 
     const page = await browser.newPage();
-    await page.setDefaultTimeout(60000);
-    await page.setDefaultNavigationTimeout(60000);
+    await page.setDefaultTimeout(120000);
+    await page.setDefaultNavigationTimeout(120000);
     
     console.log("[AUTH] Starting login process");
     await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
@@ -111,40 +118,44 @@ const authenticateLinkedIn = async (credentials) => {
       page.click(".btn__primary--large")
     ]);
 
+    console.log("[AUTH] Checking for Security Verification page...");
     if ((await page.title()).includes('Security Verification')) {
       console.log("[AUTH] Security verification required");
       const verificationCode = await getVerificationCodeFromEmail(credentials.email);
-      console.log("[AUTH] Applying verification code");
+      console.log("[AUTH] Applying verification code:", verificationCode);
       
       await page.type('[name="pin"]', verificationCode);
 
-      const buttonText = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        const targetButton = buttons.find(button => {
-          const text = button.textContent.toLowerCase();
-          return ['verificar', 'enviar', 'submit', 'verify', 'send'].some(word => text.includes(word));
-        });
-        return targetButton ? true : false;
-      });
-
-      if (!buttonText) {
-        throw new Error('Submit button not found');
-      }
-
       await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle0' }),
         page.evaluate(() => {
           const buttons = Array.from(document.querySelectorAll('button'));
           const targetButton = buttons.find(button => {
             const text = button.textContent.toLowerCase();
             return ['verificar', 'enviar', 'submit', 'verify', 'send'].some(word => text.includes(word));
           });
-          targetButton.click();
-        })
-      ]);
+          if (targetButton) {
+            console.log("[AUTH] Clicking verification button...");
+            targetButton.click();
+          }
+        }),
+        page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 120000 })
+      ]).catch(async (error) => {
+        console.error("[DEBUG] Navigation timeout or error. Falling back to manual URL check.", error);
+        let attempts = 0;
+        const maxAttempts = 24; // Retry for 2 minutes
+        while (!page.url().includes('/feed') && attempts < maxAttempts) {
+          console.log("[DEBUG] Waiting for redirection... Current URL:", page.url());
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+          attempts++;
+        }
+
+        if (!page.url().includes('/feed')) {
+          throw new Error(`Failed to navigate to LinkedIn feed. Current URL: ${page.url()}`);
+        }
+      });
 
       console.log("[DEBUG] Page title after verification:", await page.title());
-      console.log("[DEBUG] Current URL:", page.url());
+      console.log("[DEBUG] Current URL after verification:", page.url());
       const errorMessage = await page.evaluate(() => {
         const errorElement = document.querySelector('.error-message-class'); // Replace with actual error element if known
         return errorElement ? errorElement.textContent : null;
@@ -154,6 +165,7 @@ const authenticateLinkedIn = async (credentials) => {
       }
     }
 
+    console.log("[AUTH] Retrieving cookies...");
     const cookies = await page.cookies();
     console.log("[DEBUG] Retrieved cookies:", cookies);
     const liAtCookie = cookies.find(c => c.name === "li_at");
@@ -162,7 +174,10 @@ const authenticateLinkedIn = async (credentials) => {
     console.log("[AUTH] Authentication successful");
     return liAtCookie.value;
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      console.log("[AUTH] Closing browser...");
+      await browser.close();
+    }
   }
 };
 
