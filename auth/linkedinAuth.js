@@ -136,22 +136,35 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
     console.log("[AUTH] Post-login URL:", page.url());
     console.log("[AUTH] Post-login Page Title:", await page.title());
 
-    if ((await page.title()).includes("Security Verification")) {
-      console.error("[AUTH] CAPTCHA encountered. Aborting...");
-      throw new Error("CAPTCHA encountered during login");
+    if (!page.url().includes("/feed")) {
+      const screenshotPath = path.join(__dirname, "screenshot_post_login_error.png");
+      await page.screenshot({ path: screenshotPath });
+      console.log("[DEBUG] Screenshot saved to", screenshotPath);
+
+      // Send the screenshot via email
+      await sendEmailWithScreenshot(screenshotPath, credentials.email, {
+        email: credentials.email,
+        appPassword: credentials.emailAppPassword,
+      });
+
+      throw new Error("Login failed - Not redirected to LinkedIn feed page. Screenshot captured.");
     }
 
     console.log("[AUTH] Retrieving cookies...");
-    const cookies = await page.cookies();
-    const liAtCookie = cookies.find((cookie) => cookie.name === "li_at");
+    if (page.url().includes("/feed")) {
+      const cookies = await page.cookies();
+      const liAtCookie = cookies.find((cookie) => cookie.name === "li_at");
 
-    if (!liAtCookie) {
-      console.error("[AUTH] li_at cookie not found.");
-      throw new Error("Login failed - li_at cookie not found.");
+      if (!liAtCookie) {
+        console.error("[AUTH] li_at cookie not found.");
+        throw new Error("Login failed - li_at cookie not found.");
+      }
+
+      console.log("[AUTH] Authentication successful!");
+      return liAtCookie.value;
+    } else {
+      throw new Error("Not on the expected feed page to fetch cookies.");
     }
-
-    console.log("[AUTH] Authentication successful!");
-    return liAtCookie.value;
   } finally {
     if (browser) {
       console.log("[AUTH] Closing browser...");
@@ -172,10 +185,9 @@ const proxyConfig = {
 };
 
 authenticateLinkedIn(
-  { linkedinUser: "your-email@example.com", linkedinPass: "your-password" },
+  { linkedinUser: "your-email@example.com", linkedinPass: "your-password", email: "your-email@example.com", emailAppPassword: "your-email-app-password" },
   proxyConfig
 ).then((cookie) => {
   console.log("Authenticated successfully with li_at cookie:", cookie);
 }).catch((error) => {
   console.error("Authentication failed:", error);
-});
