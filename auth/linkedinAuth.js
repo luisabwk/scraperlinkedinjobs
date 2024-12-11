@@ -169,7 +169,10 @@ const authenticateLinkedIn = async (credentials) => {
     const cookies = await page.cookies();
     console.log("[DEBUG] Retrieved cookies:", cookies);
     const liAtCookie = cookies.find(c => c.name === "li_at");
-    if (!liAtCookie) throw new Error("Login failed - cookie not found");
+    if (!liAtCookie) {
+      console.log("[DEBUG] li_at cookie not found. Ensure additional authentication steps are not required.");
+      throw new Error("Login failed - cookie not found");
+    }
 
     console.log("[AUTH] Authentication successful");
     return liAtCookie.value;
