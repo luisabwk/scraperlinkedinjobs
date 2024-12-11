@@ -5,39 +5,27 @@ const { authenticateLinkedIn } = require("./auth/linkedinAuth");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
 
-require('dotenv').config();
-
 const app = express();
 app.use(express.json());
 app.use(cors());
 
 let browser;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 3;
 
 async function initializeBrowser() {
   try {
     browser = await puppeteer.launch({
       headless: "new",
+      protocolTimeout: 60000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-features=site-per-process',
-        '--memory-pressure-off',
-        '--single-process',
-        '--deterministic-fetch'
+        '--disable-gpu'
       ],
       ignoreHTTPSErrors: true,
-      timeout: 30000,
-      waitForInitialPage: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+      executablePath: "/usr/bin/chromium"
     });
-
     console.log("[INFO] Browser initialized");
-
     return browser;
   } catch (error) {
     console.error("[ERROR] Browser initialization failed:", error);
@@ -46,12 +34,12 @@ async function initializeBrowser() {
 }
 
 app.post("/scrape-jobs", async (req, res) => {
-  const { searchTerm, location, username, password, maxJobs = 50 } = req.body;
+  const { searchTerm, location, credentials, maxJobs = 50 } = req.body;
 
-  if (!searchTerm || !location || !username || !password) {
+  if (!searchTerm || !location || !credentials?.linkedinUser || !credentials?.linkedinPass || !credentials?.email) {
     return res.status(400).json({
       error: "Missing parameters",
-      required: ['searchTerm', 'location', 'username', 'password']
+      required: ['searchTerm', 'location', 'credentials.linkedinUser', 'credentials.linkedinPass', 'credentials.email']
     });
   }
 
@@ -59,8 +47,7 @@ app.post("/scrape-jobs", async (req, res) => {
     if (!browser || !browser.isConnected()) {
       browser = await initializeBrowser();
     }
-
-    const li_at = await authenticateLinkedIn(username, password);
+    const li_at = await authenticateLinkedIn(credentials);
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
     res.status(200).json(jobs);
   } catch (error) {
@@ -70,12 +57,12 @@ app.post("/scrape-jobs", async (req, res) => {
 });
 
 app.post("/job-details", async (req, res) => {
-  const { jobUrl, username, password } = req.body;
+  const { jobUrl, credentials } = req.body;
 
-  if (!jobUrl || !username || !password) {
+  if (!jobUrl || !credentials?.linkedinUser || !credentials?.linkedinPass || !credentials?.email) {
     return res.status(400).json({
       error: "Missing parameters",
-      required: ['jobUrl', 'username', 'password']
+      required: ['jobUrl', 'credentials.linkedinUser', 'credentials.linkedinPass', 'credentials.email']
     });
   }
 
@@ -83,8 +70,7 @@ app.post("/job-details", async (req, res) => {
     if (!browser || !browser.isConnected()) {
       browser = await initializeBrowser();
     }
-
-    const li_at = await authenticateLinkedIn(username, password);
+    const li_at = await authenticateLinkedIn(credentials);
     const jobDetails = await getJobDetails(browser, jobUrl, li_at);
     res.status(200).json({ success: true, jobDetails });
   } catch (error) {
@@ -99,6 +85,11 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     browserStatus: browser?.isConnected() ? "connected" : "disconnected"
   });
+});
+
+process.on('SIGTERM', async () => {
+  if (browser) await browser.close();
+  process.exit(0);
 });
 
 const PORT = process.env.PORT || 8080;
