@@ -59,14 +59,20 @@ async function getJobDetails(browser, jobUrl, li_at) {
       }
     });
 
+    console.log("[INFO] Navigating to job URL...");
     await page.goto(jobUrl, { 
       waitUntil: "networkidle0",
-      timeout: 30000 
+      timeout: 180000 
     });
+
+    if (!page.url().includes('/jobs/view')) {
+      console.log("[DEBUG] Job details page not loaded. Current URL:", page.url());
+      throw new Error("Navigation to job details page failed.");
+    }
 
     try {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
-      await page.waitForSelector(seeMoreButtonSelector, { timeout: 5000 });
+      await page.waitForSelector(seeMoreButtonSelector, { timeout: 10000 });
       await page.click(seeMoreButtonSelector);
     } catch (error) {
       console.warn("[WARN] 'See more' button not found or not clickable");
@@ -98,7 +104,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
     try {
       console.log("[INFO] Checking application type...");
       const applyButtonSelector = '.jobs-apply-button--top-card';
-      await page.waitForSelector(applyButtonSelector, { timeout: 10000 });
+      await page.waitForSelector(applyButtonSelector, { timeout: 20000 });
       
       if (await page.$(applyButtonSelector)) {
         await Promise.race([
@@ -108,7 +114,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
         const newTarget = await browser.waitForTarget(
           target => target.url() !== page.url(),
-          { timeout: 5000 }
+          { timeout: 20000 }
         );
 
         if (newTarget) {
