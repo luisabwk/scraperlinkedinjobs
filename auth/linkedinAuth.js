@@ -3,8 +3,39 @@ const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const imap = require("imap-simple");
 const fs = require("fs"); // For saving screenshots
 const path = require("path");
+const nodemailer = require("nodemailer"); // For sending emails
 
 puppeteerExtra.use(StealthPlugin());
+
+const sendEmailWithScreenshot = async (screenshotPath, recipientEmail) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail", // Use your email provider
+    auth: {
+      user: "your-email@gmail.com", // Replace with your email
+      pass: "your-email-password", // Replace with your app-specific password
+    },
+  });
+
+  const mailOptions = {
+    from: "your-email@gmail.com", // Replace with your email
+    to: recipientEmail,
+    subject: "LinkedIn Automation Error Screenshot",
+    text: "An error occurred during LinkedIn automation. Please find the screenshot attached.",
+    attachments: [
+      {
+        filename: "screenshot_error.png",
+        path: screenshotPath,
+      },
+    ],
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log("[EMAIL] Screenshot sent successfully to", recipientEmail);
+  } catch (error) {
+    console.error("[EMAIL] Failed to send email:", error);
+  }
+};
 
 const getVerificationCodeFromEmail = async (emailConfig) => {
   // (existing email fetching logic remains unchanged)
@@ -60,6 +91,7 @@ const authenticateLinkedIn = async (credentials) => {
         const screenshotPath = path.resolve(__dirname, "screenshot_verification_error.png");
         await page.screenshot({ path: screenshotPath });
         console.log(`[DEBUG] Screenshot saved to ${screenshotPath}`);
+        await sendEmailWithScreenshot(screenshotPath, "luisa@growthbrains.com.br");
         throw new Error("Verification input not found. Check screenshot for details.");
       }
 
@@ -80,6 +112,7 @@ const authenticateLinkedIn = async (credentials) => {
         const screenshotPath = path.resolve(__dirname, "screenshot_navigation_error.png");
         await page.screenshot({ path: screenshotPath });
         console.log(`[DEBUG] Screenshot saved to ${screenshotPath}`);
+        await sendEmailWithScreenshot(screenshotPath, "luisa@growthbrains.com.br");
         let attempts = 0;
         const maxAttempts = 24; // Retry for 2 minutes
         while (!page.url().includes("/feed") && attempts < maxAttempts) {
