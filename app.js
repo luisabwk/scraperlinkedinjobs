@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const puppeteer = require("puppeteer");
-const { authenticateLinkedIn } = require("./auth/linkedinAuth");
+const linkedinAuth = require("./auth/linkedinAuth");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
 
@@ -47,7 +47,7 @@ app.post("/scrape-jobs", async (req, res) => {
     if (!browser || !browser.isConnected()) {
       browser = await initializeBrowser();
     }
-    const li_at = await authenticateLinkedIn(credentials);
+    const li_at = await linkedinAuth.authenticateLinkedIn(credentials);
     const jobs = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
     res.status(200).json(jobs);
   } catch (error) {
@@ -70,7 +70,7 @@ app.post("/job-details", async (req, res) => {
     if (!browser || !browser.isConnected()) {
       browser = await initializeBrowser();
     }
-    const li_at = await authenticateLinkedIn(credentials);
+    const li_at = await linkedinAuth.authenticateLinkedIn(credentials);
     const jobDetails = await getJobDetails(browser, jobUrl, li_at);
     res.status(200).json({ success: true, jobDetails });
   } catch (error) {
