@@ -139,9 +139,20 @@ const authenticateLinkedIn = async (credentials) => {
           targetButton.click();
         })
       ]);
+
+      console.log("[DEBUG] Page title after verification:", await page.title());
+      console.log("[DEBUG] Current URL:", page.url());
+      const errorMessage = await page.evaluate(() => {
+        const errorElement = document.querySelector('.error-message-class'); // Replace with actual error element if known
+        return errorElement ? errorElement.textContent : null;
+      });
+      if (errorMessage) {
+        console.error("[DEBUG] Error message on page:", errorMessage);
+      }
     }
 
     const cookies = await page.cookies();
+    console.log("[DEBUG] Retrieved cookies:", cookies);
     const liAtCookie = cookies.find(c => c.name === "li_at");
     if (!liAtCookie) throw new Error("Login failed - cookie not found");
 
