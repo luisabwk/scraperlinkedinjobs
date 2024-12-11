@@ -4,6 +4,7 @@ const imap = require("imap-simple");
 const fs = require("fs"); // For saving screenshots
 const path = require("path");
 const nodemailer = require("nodemailer"); // For sending emails
+const { ProxyAgent } = require('undici'); // For testing proxy
 
 puppeteerExtra.use(StealthPlugin());
 
@@ -41,13 +42,29 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
   // (existing email fetching logic remains unchanged)
 };
 
+const testProxy = async (proxyConfig) => {
+  const proxyUrl = `http://${proxyConfig.username}:${proxyConfig.password}@${proxyConfig.host}:${proxyConfig.port}`;
+  const client = new ProxyAgent(proxyUrl);
+  const url = 'https://ipv4.icanhazip.com';
+
+  try {
+    console.log("[PROXY] Testing proxy...");
+    const response = await fetch(url, { dispatcher: client });
+    const data = await response.text();
+    console.log("[PROXY] Proxy IP Address:", data.trim());
+  } catch (error) {
+    console.error("[PROXY] Proxy test failed:", error);
+    throw new Error("Proxy test failed. Ensure the proxy credentials and server are correct.");
+  }
+};
+
 const authenticateLinkedIn = async (credentials, proxyConfig) => {
   let browser;
   try {
+    await testProxy(proxyConfig);
+
     console.log("[AUTH] Launching browser with residential proxy...");
-    const args = proxyConfig
-      ? [`--proxy-server=http://${proxyConfig.host}:${proxyConfig.port}`]
-      : [];
+    const args = [`--proxy-server=http://${proxyConfig.host}:${proxyConfig.port}`];
 
     browser = await puppeteerExtra.launch({
       headless: "new", // Use headful mode for debugging: set this to false
