@@ -114,9 +114,30 @@ const authenticateLinkedIn = async (credentials) => {
       console.log("[AUTH] Applying verification code");
       
       await page.type('[name="pin"]', verificationCode);
+
+      const buttonText = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button'));
+        const targetButton = buttons.find(button => {
+          const text = button.textContent.toLowerCase();
+          return ['verificar', 'enviar', 'submit', 'verify', 'send'].some(word => text.includes(word));
+        });
+        return targetButton ? true : false;
+      });
+
+      if (!buttonText) {
+        throw new Error('Submit button not found');
+      }
+
       await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
-        page.click('.artdeco-button')
+        page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const targetButton = buttons.find(button => {
+            const text = button.textContent.toLowerCase();
+            return ['verificar', 'enviar', 'submit', 'verify', 'send'].some(word => text.includes(word));
+          });
+          targetButton.click();
+        })
       ]);
     }
 
