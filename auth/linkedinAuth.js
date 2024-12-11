@@ -16,10 +16,11 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
   };
 
   try {
-    console.log("[EMAIL] Connecting with:", {
+    console.log("[EMAIL] Config:", {
       user: config.imap.user,
       host: config.imap.host,
-      port: config.imap.port
+      port: config.imap.port,
+      tls: config.imap.tls
     });
 
     const connection = await imap.connect(config);
@@ -33,7 +34,7 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
       console.log(`[EMAIL] Attempt ${attempts + 1}/${maxAttempts}`);
       
       const searchCriteria = [
-        ["SINCE", new Date(Date.now() - 1000 * 60 * 5)]
+        ["SUBJECT", "código de verificação"]
       ];
       
       const fetchOptions = { 
@@ -42,17 +43,16 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
       };
 
       const messages = await connection.search(searchCriteria, fetchOptions);
-      console.log(`[EMAIL] Found ${messages.length} recent messages`);
+      console.log(`[EMAIL] Found ${messages.length} messages`);
 
       for (const message of messages) {
         const header = message.parts.find(part => part.which === "HEADER.FIELDS (FROM SUBJECT)");
-        const from = header?.body?.from?.[0] || "";
-        const subject = header?.body?.subject?.[0] || "";
+        console.log("[EMAIL] Message headers:", header?.body);
         
-        console.log(`[EMAIL] Processing - From: ${from}, Subject: ${subject}`);
-        
-        if (from.includes("linkedin.com") && subject.includes("verificação")) {
-          const codeMatch = subject.match(/\d{6}/);
+        if (header?.body?.from?.[0]?.includes("linkedin.com")) {
+          console.log("[EMAIL] Found LinkedIn email:", header.body);
+          const subject = header?.body?.subject?.[0];
+          const codeMatch = subject?.match(/\d{6}/);
           if (codeMatch) {
             console.log("[EMAIL] Code found:", codeMatch[0]);
             await connection.end();
