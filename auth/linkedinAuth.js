@@ -48,9 +48,10 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
       const messages = await connection.search(searchCriteria, fetchOptions);
       console.log(`[EMAIL] Found ${messages.length} messages`);
 
-      for (const message of messages) {
-        const header = message.parts.find(part => part.which === "HEADER.FIELDS (FROM SUBJECT)");
-        console.log("[EMAIL] Message headers:", header?.body);
+      if (messages.length > 0) {
+        const latestMessage = messages[messages.length - 1]; // Get the most recent message
+        const header = latestMessage.parts.find(part => part.which === "HEADER.FIELDS (FROM SUBJECT)");
+        console.log("[EMAIL] Latest message headers:", header?.body);
         
         if (header?.body?.from?.[0]?.includes("linkedin.com")) {
           console.log("[EMAIL] Found LinkedIn email:", header.body);
