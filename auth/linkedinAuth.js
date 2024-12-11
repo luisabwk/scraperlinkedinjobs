@@ -168,7 +168,12 @@ const authenticateLinkedIn = async (credentials) => {
     console.log("[AUTH] Retrieving cookies...");
     const cookies = await page.cookies();
     console.log("[DEBUG] Retrieved cookies:", cookies);
-    const liAtCookie = cookies.find(c => c.name === "li_at");
+    if (!page.url().includes('/feed')) {
+  console.log("[DEBUG] Not on /feed page. Current URL:", page.url());
+  throw new Error("Login failed - not redirected to /feed page.");
+}
+
+const liAtCookie = cookies.find(c => c.name === "li_at");
     if (!liAtCookie) {
       console.log("[DEBUG] li_at cookie not found. Ensure additional authentication steps are not required.");
       throw new Error("Login failed - cookie not found");
