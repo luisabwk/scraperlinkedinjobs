@@ -5,28 +5,8 @@ const fs = require("fs"); // For saving screenshots
 const path = require("path");
 const nodemailer = require("nodemailer"); // For sending emails
 const { ProxyAgent } = require('undici'); // For testing proxy
-const crypto = require("crypto"); // For encrypting credentials
 
 puppeteerExtra.use(StealthPlugin());
-
-// Encryption Utility
-const encrypt = (text) => {
-  const algorithm = "aes-256-cbc";
-  const key = crypto.scryptSync("encryption-key", "salt", 32); // Replace "encryption-key" with your secure key
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(algorithm, key, iv);
-  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
-  return `${iv.toString("hex")}:${encrypted.toString("hex")}`;
-};
-
-const decrypt = (encryptedText) => {
-  const algorithm = "aes-256-cbc";
-  const key = crypto.scryptSync("encryption-key", "salt", 32); // Replace "encryption-key" with your secure key
-  const [iv, encrypted] = encryptedText.split(":").map(part => Buffer.from(part, "hex"));
-  const decipher = crypto.createDecipheriv(algorithm, key, iv);
-  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-  return decrypted.toString("utf8");
-};
 
 const sendEmailWithScreenshot = async (screenshotPath, recipientEmail, emailConfig) => {
   const transporter = nodemailer.createTransport({
@@ -132,20 +112,19 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
     console.log("[AUTH] Post-login URL:", page.url());
     console.log("[AUTH] Post-login Page Title:", await page.title());
 
-
     if (!page.url().includes("/feed")) {
-  const screenshotPath = path.join(__dirname, "screenshot_post_login_error.png");
-  await page.screenshot({ path: screenshotPath });
-  console.log("[DEBUG] Screenshot saved to", screenshotPath);
+      const screenshotPath = path.join(__dirname, "screenshot_post_login_error.png");
+      await page.screenshot({ path: screenshotPath });
+      console.log("[DEBUG] Screenshot saved to", screenshotPath);
 
-  // Send the screenshot via email
-  await sendEmailWithScreenshot(screenshotPath, credentials.email.email, {
-    email: credentials.email.email,
-    appPassword: credentials.email.appPassword,
-  });
+      // Send the screenshot via email
+      await sendEmailWithScreenshot(screenshotPath, credentials.email.email, {
+        email: credentials.email.email,
+        appPassword: credentials.email.appPassword,
+      });
 
-  throw new Error("Login failed - Not redirected to LinkedIn feed page. Screenshot captured.");
-}
+      throw new Error("Login failed - Not redirected to LinkedIn feed page. Screenshot captured.");
+    }
 
     console.log("[AUTH] Retrieving cookies...");
     if (page.url().includes("/feed")) {
@@ -171,18 +150,21 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
 };
 
 // Example Usage
-const encryptedUsername = encrypt("d4Xzafgb5TJfSLpI");
-const encryptedPassword = encrypt("YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1");
-
 const proxyConfig = {
   host: "geo.iproyal.com",
   port: "12321",
-  username: decrypt(encryptedUsername),
-  password: decrypt(encryptedPassword),
+  username: "d4Xzafgb5TJfSLpI",
+  password: "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1",
 };
 
 authenticateLinkedIn(
-  { linkedinUser: "your-email@example.com", linkedinPass: "your-password", email: "your-email@example.com", emailAppPassword: "your-email-app-password" },
+  { linkedinUser: "tools@growthbrains.com.br", linkedinPass: "Growth@2024!", email: {
+      email: "tools@growthbrains.com.br",
+      appPassword: "thrsdjfavbhiwkfg",
+      host: "imap.gmail.com",
+      port: 993
+    }
+  },
   proxyConfig
 ).then((cookie) => {
   console.log("Authenticated successfully with li_at cookie:", cookie);
