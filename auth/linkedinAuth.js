@@ -1,14 +1,13 @@
 const puppeteer = require("puppeteer");
 const imap = require("imap-simple");
-require('dotenv').config();
 
-const getVerificationCodeFromEmail = async () => {
+const getVerificationCodeFromEmail = async (emailConfig) => {
   const config = {
     imap: {
-      user: process.env.EMAIL_USER,
-      password: process.env.EMAIL_PASSWORD,
-      host: process.env.EMAIL_HOST,
-      port: parseInt(process.env.EMAIL_PORT) || 993,
+      user: emailConfig.email,
+      password: emailConfig.appPassword,
+      host: emailConfig.host || "imap.gmail.com",
+      port: emailConfig.port || 993,
       tls: true,
       tlsOptions: { rejectUnauthorized: false },
       authTimeout: 30000,
@@ -16,41 +15,29 @@ const getVerificationCodeFromEmail = async () => {
     }
   };
 
-  console.log(`[DEBUG] Email config: ${config.imap.user} / ${config.imap.host}`);
-
   try {
     const connection = await imap.connect(config);
-    console.log("[DEBUG] Connected to IMAP server");
-    
     await connection.openBox("INBOX");
-    console.log("[DEBUG] Opened INBOX");
 
-    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     let attempts = 0;
     const maxAttempts = 10;
 
     while (attempts < maxAttempts) {
-      console.log(`[DEBUG] Search attempt ${attempts + 1}`);
-
       const searchCriteria = [
         "UNSEEN",
         ["SUBJECT", "Aqui está seu código de verificação"],
         ["FROM", "security-noreply@linkedin.com"],
         ["SINCE", new Date(Date.now() - 1000 * 60 * 5)]
       ];
-
-      console.log("[DEBUG] Search criteria:", JSON.stringify(searchCriteria));
       
       const fetchOptions = { bodies: ["TEXT", "HEADER"], markSeen: false };
       const messages = await connection.search(searchCriteria, fetchOptions);
-      console.log(`[DEBUG] Found ${messages.length} messages`);
 
       for (const message of messages) {
         const text = message.parts.find(part => part.which === "TEXT");
         if (text) {
           const matches = text.body.match(/\b\d{6}\b/);
           if (matches) {
-            console.log("[DEBUG] Found verification code");
             await connection.end();
             return matches[0];
           }
@@ -59,20 +46,18 @@ const getVerificationCodeFromEmail = async () => {
 
       attempts++;
       if (attempts < maxAttempts) {
-        console.log("[DEBUG] No code found, waiting 5s");
-        await delay(5000);
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
 
     await connection.end();
-    throw new Error("Verification code not found after maximum attempts");
+    throw new Error("Verification code not found");
   } catch (error) {
-    console.error("[DEBUG] IMAP error:", error);
     throw new Error(`Email verification failed: ${error.message}`);
   }
 };
 
-const authenticateLinkedIn = async (username, password) => {
+const authenticateLinkedIn = async (credentials) => {
   let browser;
   try {
     browser = await puppeteer.launch({
@@ -85,7 +70,7 @@ const authenticateLinkedIn = async (username, password) => {
         '--disable-gpu'
       ],
       ignoreHTTPSErrors: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+      executablePath: "/usr/bin/chromium"
     });
 
     const page = await browser.newPage();
@@ -93,8 +78,8 @@ const authenticateLinkedIn = async (username, password) => {
     await page.setDefaultNavigationTimeout(60000);
     
     await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
-    await page.type("#username", username);
-    await page.type("#password", password);
+    await page.type("#username", credentials.linkedinUser);
+    await page.type("#password", credentials.linkedinPass);
     
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'networkidle0' }),
@@ -102,10 +87,7 @@ const authenticateLinkedIn = async (username, password) => {
     ]);
 
     if ((await page.title()).includes('Security Verification')) {
-      console.log("[DEBUG] Security verification needed");
-      const verificationCode = await getVerificationCodeFromEmail();
-      console.log("[DEBUG] Got verification code");
-      
+      const verificationCode = await getVerificationCodeFromEmail(credentials.email);
       await page.type(".input_verification_pin", verificationCode);
       await Promise.all([
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
