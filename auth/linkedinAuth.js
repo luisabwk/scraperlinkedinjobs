@@ -46,7 +46,7 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
   try {
     console.log("[AUTH] Launching browser with residential proxy...");
     const args = proxyConfig
-      ? [`--proxy-server=${proxyConfig.host}:${proxyConfig.port}`]
+      ? [`--proxy-server=http://${proxyConfig.host}:${proxyConfig.port}`]
       : [];
 
     browser = await puppeteerExtra.launch({
@@ -79,7 +79,12 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
 
     // Navigate to LinkedIn
     console.log("[AUTH] Starting login process...");
-    await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
+    try {
+      await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
+    } catch (error) {
+      console.error("[AUTH] Proxy connection failed. Error:", error.message);
+      throw new Error("Proxy connection failed. Ensure the proxy credentials and server are correct.");
+    }
 
     console.log("[AUTH] Filling credentials...");
     await page.type("#username", credentials.linkedinUser);
