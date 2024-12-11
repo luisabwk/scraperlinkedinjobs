@@ -1,6 +1,8 @@
 const puppeteerExtra = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const imap = require("imap-simple");
+const fs = require("fs"); // For saving screenshots
+const path = require("path");
 
 puppeteerExtra.use(StealthPlugin());
 
@@ -50,12 +52,16 @@ const authenticateLinkedIn = async (credentials) => {
       const verificationCode = await getVerificationCodeFromEmail(credentials.email);
       console.log("[AUTH] Applying verification code:", verificationCode);
 
-      await page.waitForSelector('[name="pin"]', { timeout: 20000 }).catch((error) => {
-        console.error("[DEBUG] Verification input not found:", error);
-        throw new Error("Verification input not found. Check if the page structure has changed.");
-      });
-
-      await page.type('[name="pin"]', verificationCode);
+      try {
+        await page.waitForSelector('[name="pin"]', { timeout: 20000 });
+        await page.type('[name="pin"]', verificationCode);
+      } catch (error) {
+        console.error("[DEBUG] Verification input not found. Taking screenshot...");
+        const screenshotPath = path.resolve(__dirname, "screenshot_verification_error.png");
+        await page.screenshot({ path: screenshotPath });
+        console.log(`[DEBUG] Screenshot saved to ${screenshotPath}`);
+        throw new Error("Verification input not found. Check screenshot for details.");
+      }
 
       await Promise.all([
         page.evaluate(() => {
@@ -70,7 +76,10 @@ const authenticateLinkedIn = async (credentials) => {
         }),
         page.waitForNavigation({ waitUntil: "networkidle0", timeout: 120000 }),
       ]).catch(async (error) => {
-        console.error("[DEBUG] Navigation timeout or error. Falling back to manual URL check.", error);
+        console.error("[DEBUG] Navigation timeout or error. Taking screenshot...");
+        const screenshotPath = path.resolve(__dirname, "screenshot_navigation_error.png");
+        await page.screenshot({ path: screenshotPath });
+        console.log(`[DEBUG] Screenshot saved to ${screenshotPath}`);
         let attempts = 0;
         const maxAttempts = 24; // Retry for 2 minutes
         while (!page.url().includes("/feed") && attempts < maxAttempts) {
