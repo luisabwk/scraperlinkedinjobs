@@ -105,7 +105,31 @@ const authenticateLinkedIn = async (credentials) => {
     console.log("[AUTH] Submitting login");
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'networkidle0' }),
-      page.click(".btn__primary--large")
+      // Inside authenticateLinkedIn function, replace the verification code click:
+const buttonText = await page.evaluate(() => {
+  const buttons = Array.from(document.querySelectorAll('button'));
+  const targetButton = buttons.find(button => {
+    const text = button.textContent.toLowerCase();
+    return ['verificar', 'enviar', 'submit', 'verify', 'send'].some(word => text.includes(word));
+  });
+  return targetButton ? true : false;
+});
+
+if (!buttonText) {
+  throw new Error('Submit button not found');
+}
+
+await Promise.all([
+  page.waitForNavigation({ waitUntil: 'networkidle0' }),
+  page.evaluate(() => {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    const targetButton = buttons.find(button => {
+      const text = button.textContent.toLowerCase();
+      return ['verificar', 'enviar', 'submit', 'verify', 'send'].some(word => text.includes(word));
+    });
+    targetButton.click();
+  })
+]);
     ]);
 
     if ((await page.title()).includes('Security Verification')) {
