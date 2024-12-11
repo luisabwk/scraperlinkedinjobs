@@ -1,6 +1,5 @@
 const puppeteerExtra = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-const imap = require("imap-simple");
 const fs = require("fs"); // For saving screenshots
 const path = require("path");
 const nodemailer = require("nodemailer"); // For sending emails
@@ -105,7 +104,7 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
 
     console.log("[AUTH] Submitting login...");
     await Promise.all([
-      page.waitForNavigation({ waitUntil: "networkidle0" }),
+      page.waitForNavigation({ waitUntil: "networkidle0", timeout: 120000 }),
       page.click(".btn__primary--large"),
     ]);
 
@@ -149,25 +148,4 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
   }
 };
 
-// Example Usage
-const proxyConfig = {
-  host: "geo.iproyal.com",
-  port: "12321",
-  username: "d4Xzafgb5TJfSLpI",
-  password: "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1",
-};
-
-authenticateLinkedIn(
-  { linkedinUser: "tools@growthbrains.com.br", linkedinPass: "Growth@2024!", email: {
-      email: "tools@growthbrains.com.br",
-      appPassword: "thrsdjfavbhiwkfg",
-      host: "imap.gmail.com",
-      port: 993
-    }
-  },
-  proxyConfig
-).then((cookie) => {
-  console.log("Authenticated successfully with li_at cookie:", cookie);
-}).catch((error) => {
-  console.error("Authentication failed:", error);
-});
+module.exports = { authenticateLinkedIn, testProxy, sendEmailWithScreenshot };
