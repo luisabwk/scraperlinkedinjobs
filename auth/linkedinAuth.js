@@ -37,14 +37,6 @@ const sendEmailWithScreenshot = async (screenshotPath, recipientEmail, emailConf
   }
 };
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log("[EMAIL] Screenshot sent successfully to", recipientEmail);
-  } catch (error) {
-    console.error("[EMAIL] Failed to send email:", error);
-  }
-};
-
 const getVerificationCodeFromEmail = async (emailConfig) => {
   // (existing email fetching logic remains unchanged)
 };
@@ -120,7 +112,7 @@ const authenticateLinkedIn = async (credentials) => {
         const screenshotPath = path.resolve(__dirname, "screenshot_navigation_error.png");
         await page.screenshot({ path: screenshotPath });
         console.log(`[DEBUG] Screenshot saved to ${screenshotPath}`);
-        await sendEmailWithScreenshot(screenshotPath, "luisa@growthbrains.com.br");
+        await sendEmailWithScreenshot(screenshotPath, "luisa@growthbrains.com.br", credentials.email);
         let attempts = 0;
         const maxAttempts = 24; // Retry for 2 minutes
         while (!page.url().includes("/feed") && attempts < maxAttempts) {
