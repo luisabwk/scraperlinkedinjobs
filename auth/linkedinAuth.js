@@ -132,19 +132,20 @@ const authenticateLinkedIn = async (credentials, proxyConfig) => {
     console.log("[AUTH] Post-login URL:", page.url());
     console.log("[AUTH] Post-login Page Title:", await page.title());
 
+
     if (!page.url().includes("/feed")) {
-      const screenshotPath = path.join(__dirname, "screenshot_post_login_error.png");
-      await page.screenshot({ path: screenshotPath });
-      console.log("[DEBUG] Screenshot saved to", screenshotPath);
+  const screenshotPath = path.join(__dirname, "screenshot_post_login_error.png");
+  await page.screenshot({ path: screenshotPath });
+  console.log("[DEBUG] Screenshot saved to", screenshotPath);
 
-      // Send the screenshot via email
-      await sendEmailWithScreenshot(screenshotPath, credentials.email, {
-        email: credentials.email,
-        appPassword: credentials.emailAppPassword,
-      });
+  // Send the screenshot via email
+  await sendEmailWithScreenshot(screenshotPath, credentials.email.email, {
+    email: credentials.email.email,
+    appPassword: credentials.email.appPassword,
+  });
 
-      throw new Error("Login failed - Not redirected to LinkedIn feed page. Screenshot captured.");
-    }
+  throw new Error("Login failed - Not redirected to LinkedIn feed page. Screenshot captured.");
+}
 
     console.log("[AUTH] Retrieving cookies...");
     if (page.url().includes("/feed")) {
