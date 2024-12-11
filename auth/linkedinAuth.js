@@ -27,7 +27,7 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
     console.log("[EMAIL] Connected to inbox successfully");
     
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 20;
 
     while (attempts < maxAttempts) {
       console.log(`[EMAIL] Attempt ${attempts + 1}/${maxAttempts}`);
