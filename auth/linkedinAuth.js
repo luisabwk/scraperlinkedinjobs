@@ -50,6 +50,11 @@ const authenticateLinkedIn = async (credentials) => {
       const verificationCode = await getVerificationCodeFromEmail(credentials.email);
       console.log("[AUTH] Applying verification code:", verificationCode);
 
+      await page.waitForSelector('[name="pin"]', { timeout: 20000 }).catch((error) => {
+        console.error("[DEBUG] Verification input not found:", error);
+        throw new Error("Verification input not found. Check if the page structure has changed.");
+      });
+
       await page.type('[name="pin"]', verificationCode);
 
       await Promise.all([
