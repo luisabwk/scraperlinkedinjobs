@@ -1,5 +1,8 @@
-const puppeteer = require("puppeteer");
+const puppeteerExtra = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const imap = require("imap-simple");
+
+puppeteerExtra.use(StealthPlugin());
 
 const getVerificationCodeFromEmail = async (emailConfig) => {
   const config = {
@@ -78,7 +81,7 @@ const getVerificationCodeFromEmail = async (emailConfig) => {
 const authenticateLinkedIn = async (credentials) => {
   let browser;
   try {
-    browser = await puppeteer.launch({
+    browser = await puppeteerExtra.launch({
       headless: "new",
       protocolTimeout: 60000,
       args: [
@@ -87,8 +90,7 @@ const authenticateLinkedIn = async (credentials) => {
         '--disable-dev-shm-usage',
         '--disable-gpu'
       ],
-      ignoreHTTPSErrors: true,
-      executablePath: "/usr/bin/chromium"
+      ignoreHTTPSErrors: true
     });
 
     const page = await browser.newPage();
