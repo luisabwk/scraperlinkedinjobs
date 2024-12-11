@@ -7,17 +7,17 @@ const nodemailer = require("nodemailer"); // For sending emails
 
 puppeteerExtra.use(StealthPlugin());
 
-const sendEmailWithScreenshot = async (screenshotPath, recipientEmail) => {
+const sendEmailWithScreenshot = async (screenshotPath, recipientEmail, emailConfig) => {
   const transporter = nodemailer.createTransport({
-    service: "gmail", // Use your email provider
+    service: "gmail",
     auth: {
-      user: "your-email@gmail.com", // Replace with your email
-      pass: "your-email-password", // Replace with your app-specific password
+      user: emailConfig.email,
+      pass: emailConfig.appPassword,
     },
   });
 
   const mailOptions = {
-    from: "your-email@gmail.com", // Replace with your email
+    from: emailConfig.email,
     to: recipientEmail,
     subject: "LinkedIn Automation Error Screenshot",
     text: "An error occurred during LinkedIn automation. Please find the screenshot attached.",
@@ -28,6 +28,14 @@ const sendEmailWithScreenshot = async (screenshotPath, recipientEmail) => {
       },
     ],
   };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log("[EMAIL] Screenshot sent successfully to", recipientEmail);
+  } catch (error) {
+    console.error("[EMAIL] Failed to send email:", error);
+  }
+};
 
   try {
     await transporter.sendMail(mailOptions);
@@ -91,7 +99,7 @@ const authenticateLinkedIn = async (credentials) => {
         const screenshotPath = path.resolve(__dirname, "screenshot_verification_error.png");
         await page.screenshot({ path: screenshotPath });
         console.log(`[DEBUG] Screenshot saved to ${screenshotPath}`);
-        await sendEmailWithScreenshot(screenshotPath, "luisa@growthbrains.com.br");
+        await sendEmailWithScreenshot(screenshotPath, "luisa@growthbrains.com.br", credentials.email);
         throw new Error("Verification input not found. Check screenshot for details.");
       }
 
