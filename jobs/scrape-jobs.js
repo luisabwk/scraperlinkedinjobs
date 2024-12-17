@@ -1,5 +1,17 @@
 const puppeteer = require("puppeteer");
 
+async function waitForNetworkIdle(page, timeout = 10000, maxInflightRequests = 0) {
+  try {
+    await page.waitForNetworkIdle({ 
+      idleTime: 500, 
+      timeout: timeout,
+      maxInflightRequests: maxInflightRequests 
+    });
+  } catch (error) {
+    console.warn('[WARN] Network idle timeout reached, continuing anyway');
+  }
+}
+
 async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
   console.log("[DEBUG] Iniciando o processo de getJobListings...");
   let allJobs = [];
@@ -11,13 +23,15 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     throw new Error("Navegador Puppeteer não inicializado corretamente.");
   }
 
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-  );
+  let page = null;
 
   try {
+    page = await browser.newPage();
+    await page.setViewport({ width: 1920, height: 1080 });
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    );
+
     const cookies = [
       {
         name: "li_at",
@@ -31,17 +45,56 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     await page.setRequestInterception(true);
     page.on('request', (req) => {
       const resourceType = req.resourceType();
-      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font' || resourceType === 'stylesheet') {
         req.abort();
       } else {
         req.continue();
       }
     });
 
-    await page.goto(baseUrl, { 
-      waitUntil: "networkidle0",
-      timeout: 60000 
-    });
+    let maxRetries = 3;
+    let currentRetry = 0;
+    let success = false;
+
+    while (currentRetry < maxRetries && !success) {
+      try {
+        console.log(`[INFO] Navigation attempt ${currentRetry + 1} of ${maxRetries}`);
+        
+        await Promise.race([
+          page.goto(baseUrl, { 
+            waitUntil: "domcontentloaded",
+            timeout: 120000
+          }),
+          new Promise((resolve, reject) => {
+            setTimeout(() => {
+              reject(new Error('Individual navigation timeout of 120000ms exceeded'));
+            }, 120000);
+          })
+        ]);
+
+        // Wait for job listings container
+        await Promise.race([
+          page.waitForSelector('.scaffold-layout__list', { timeout: 30000 }),
+          new Promise(resolve => setTimeout(resolve, 30000))
+        ]);
+
+        await waitForNetworkIdle(page, 10000);
+        success = true;
+        console.log('[INFO] Navigation successful');
+      } catch (error) {
+        currentRetry++;
+        console.warn(`[WARN] Navigation attempt ${currentRetry} failed:`, error.message);
+        
+        if (currentRetry === maxRetries) {
+          throw new Error(`All navigation attempts failed: ${error.message}`);
+        }
+        
+        // Clear memory and wait before retry
+        await page.evaluate(() => window.stop());
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+
     console.log("[INFO] Página inicial acessada com sucesso.");
 
     let totalPages = 1;
@@ -61,13 +114,26 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
 
       if (currentPage > 1) {
         const pageURL = `${baseUrl}&start=${(currentPage - 1) * 25}`;
-        await page.goto(pageURL, { 
-          waitUntil: "networkidle0",
-          timeout: 60000 
-        });
+        
+        let pageSuccess = false;
+        let pageRetries = 3;
+        
+        while (!pageSuccess && pageRetries > 0) {
+          try {
+            await page.goto(pageURL, { 
+              waitUntil: "domcontentloaded",
+              timeout: 60000 
+            });
+            await page.waitForSelector('.scaffold-layout__list', { timeout: 30000 });
+            pageSuccess = true;
+          } catch (error) {
+            pageRetries--;
+            console.warn(`[WARN] Failed to load page ${currentPage}, retries left: ${pageRetries}`);
+            if (pageRetries === 0) throw error;
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+        }
       }
-
-      await page.waitForSelector('.scaffold-layout__list', { timeout: 10000 });
 
       const jobsResult = await page.evaluate(() => {
         const jobElements = Array.from(document.querySelectorAll(".job-card-container--clickable"));
@@ -99,6 +165,8 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
         });
       });
 
+      console.log(`[INFO] Found ${jobsResult.length} jobs on page ${currentPage}`);
+
       jobsResult.forEach((job) => {
         if (job.link) {
           const jobIdMatch = job.link.match(/(\d+)/);
@@ -117,6 +185,11 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
         console.info(`[INFO] Número máximo de vagas (${maxJobs}) alcançado.`);
         break;
       }
+
+      // Wait between pages to avoid rate limiting
+      if (currentPage < totalPages) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
 
     console.log(`[INFO] Total de vagas coletadas: ${allJobs.length}`);
@@ -125,7 +198,14 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
     console.error("[ERROR] Erro ao realizar scraping:", error);
     throw new Error(`Erro durante o scraping: ${error.message}`);
   } finally {
-    await page.close();
+    if (page) {
+      try {
+        await page.close();
+        console.log("[INFO] Page closed successfully");
+      } catch (closeError) {
+        console.error("[ERROR] Error closing page:", closeError);
+      }
+    }
   }
 }
 
