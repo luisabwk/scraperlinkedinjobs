@@ -1,8 +1,6 @@
-// app.js
 const express = require("express");
 const cors = require("cors");
 const puppeteerExtra = require("puppeteer-extra");
-const { authenticateLinkedIn } = require("./auth/linkedinAuth");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
 
@@ -51,7 +49,7 @@ async function initializeBrowser() {
         "--disable-notifications",
         "--disable-extensions",
         "--memory-pressure-off",
-        "--js-flags=--max-old-space-size=460" // Limit Chrome's memory usage
+        "--js-flags=--max-old-space-size=460"
       ],
       ignoreHTTPSErrors: true,
       executablePath: "/usr/bin/chromium",
@@ -106,11 +104,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Example route with enhanced error handling
+// Route with enhanced error handling
 app.post("/api/jobs/search", ensureBrowser, async (req, res) => {
   const startTime = Date.now();
   try {
-    // Set request timeout
     req.setTimeout(180000, () => {
       console.error('[ERROR] Request timeout reached');
       res.status(504).send('Request timeout');
@@ -131,6 +128,31 @@ app.post("/api/jobs/search", ensureBrowser, async (req, res) => {
   }
 });
 
+app.get("/api/jobs/:url", ensureBrowser, async (req, res) => {
+  const startTime = Date.now();
+  try {
+    req.setTimeout(180000, () => {
+      console.error('[ERROR] Request timeout reached');
+      res.status(504).send('Request timeout');
+    });
+
+    const { url } = req.params;
+    const { li_at } = req.query;
+    
+    console.log(`[INFO] Starting job details fetch for URL: ${url}`);
+
+    const jobDetails = await getJobDetails(browser, decodeURIComponent(url), li_at);
+    
+    const duration = Date.now() - startTime;
+    console.log(`[INFO] Job details fetch completed in ${duration}ms`);
+    
+    res.json(jobDetails);
+  } catch (error) {
+    console.error('[ERROR] Job details fetch failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('[ERROR] Express error:', err);
@@ -138,60 +160,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-// jobs/job-details.js modifications
-const getJobDetails = async (browser, jobUrl, li_at) => {
-  let page = null;
-  const startTime = Date.now();
-  
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, async () => {
   try {
-    console.log(`[INFO] Starting job details fetch for: ${jobUrl}`);
-    if (!browser || !browser.isConnected()) {
-      throw new Error('Browser not connected');
-    }
-    
-    page = await browser.newPage();
-    // ... rest of your existing getJobDetails code ...
-    
+    await initializeBrowser();
+    console.log(`[INFO] Server is running on port ${PORT}`);
   } catch (error) {
-    console.error(`[ERROR] Failed to get job details for ${jobUrl}:`, error);
-    throw error;
-  } finally {
-    if (page) {
-      try {
-        await page.close();
-        console.log(`[INFO] Page closed. Job details fetch took ${Date.now() - startTime}ms`);
-      } catch (closeError) {
-        console.error('[WARN] Error closing page:', closeError);
-      }
-    }
+    console.error('[CRITICAL] Failed to start server:', error);
+    process.exit(1);
   }
-};
+});
 
-// jobs/scrape-jobs.js modifications
-const getJobListings = async (browser, searchTerm, location, li_at, maxJobs) => {
-  let page = null;
-  const startTime = Date.now();
-  
-  try {
-    console.log('[INFO] Starting job listings fetch');
-    if (!browser || !browser.isConnected()) {
-      throw new Error('Browser not connected');
-    }
-    
-    page = await browser.newPage();
-    // ... rest of your existing getJobListings code ...
-    
-  } catch (error) {
-    console.error('[ERROR] Failed to get job listings:', error);
-    throw error;
-  } finally {
-    if (page) {
-      try {
-        await page.close();
-        console.log(`[INFO] Page closed. Job listings fetch took ${Date.now() - startTime}ms`);
-      } catch (closeError) {
-        console.error('[WARN] Error closing page:', closeError);
-      }
-    }
-  }
-};
+module.exports = { app, initializeBrowser };
