@@ -104,8 +104,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Route with enhanced error handling
-app.post("/api/jobs/search", ensureBrowser, async (req, res) => {
+// Job search route
+app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
   const startTime = Date.now();
   try {
     req.setTimeout(180000, () => {
@@ -128,7 +128,8 @@ app.post("/api/jobs/search", ensureBrowser, async (req, res) => {
   }
 });
 
-app.get("/api/jobs/:url", ensureBrowser, async (req, res) => {
+// Job details route
+app.post("/job-details", ensureBrowser, async (req, res) => {
   const startTime = Date.now();
   try {
     req.setTimeout(180000, () => {
@@ -136,8 +137,11 @@ app.get("/api/jobs/:url", ensureBrowser, async (req, res) => {
       res.status(504).send('Request timeout');
     });
 
-    const { url } = req.params;
-    const { li_at } = req.query;
+    const { url, li_at } = req.body;
+    
+    if (!url) {
+      throw new Error('URL is required');
+    }
     
     console.log(`[INFO] Starting job details fetch for URL: ${url}`);
 
