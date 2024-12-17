@@ -140,15 +140,15 @@ app.post("/job-details", ensureBrowser, async (req, res) => {
       res.status(504).send('Request timeout');
     });
 
-    const { url, li_at } = req.body;
+    const { jobUrl, li_at } = req.body;
     
-    if (!url) {
+    if (!jobUrl) {
       throw new Error('URL is required');
     }
     
-    console.log(`[INFO] Starting job details fetch for URL: ${url}`);
+    console.log(`[INFO] Starting job details fetch for URL: ${jobUrl}`);
 
-    const jobDetails = await getJobDetails(browser, decodeURIComponent(url), li_at);
+    const jobDetails = await getJobDetails(browser, decodeURIComponent(jobUrl), li_at);
     
     const duration = Date.now() - startTime;
     console.log(`[INFO] Job details fetch completed in ${duration}ms`);
