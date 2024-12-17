@@ -38,7 +38,7 @@ async function initializeBrowser() {
     
     browser = await puppeteerExtra.launch({
       headless: "new",
-      protocolTimeout: 60000,
+      protocolTimeout: 120000,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -49,10 +49,13 @@ async function initializeBrowser() {
         "--disable-notifications",
         "--disable-extensions",
         "--memory-pressure-off",
-        "--js-flags=--max-old-space-size=460"
+        "--js-flags=--max-old-space-size=460",
+        "--disable-web-security",
+        "--disable-features=IsolateOrigins,site-per-process"
       ],
       ignoreHTTPSErrors: true,
       executablePath: "/usr/bin/chromium",
+      timeout: 120000
     });
 
     browserLastInitialized = Date.now();
