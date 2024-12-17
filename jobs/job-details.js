@@ -33,6 +33,18 @@ function isValidApplyUrl(url, companyName) {
   }
 }
 
+async function waitForNetworkIdle(page, timeout = 10000, maxInflightRequests = 0) {
+  try {
+    await page.waitForNetworkIdle({ 
+      idleTime: 500, 
+      timeout: timeout,
+      maxInflightRequests: maxInflightRequests 
+    });
+  } catch (error) {
+    console.warn('[WARN] Network idle timeout reached, continuing anyway');
+  }
+}
+
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Accessing job details: ${jobUrl}`);
   let page = null;
@@ -52,30 +64,76 @@ async function getJobDetails(browser, jobUrl, li_at) {
     await page.setRequestInterception(true);
     page.on('request', (req) => {
       const resourceType = req.resourceType();
-      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font') {
+      if (resourceType === 'image' || resourceType === 'media' || resourceType === 'font' || resourceType === 'stylesheet') {
         req.abort();
       } else {
         req.continue();
       }
     });
 
-    console.log("[INFO] Navigating to job URL...");
-    await page.goto(jobUrl, { 
-      waitUntil: "networkidle0",
-      timeout: 180000 
-    });
+    let maxRetries = 3;
+    let currentRetry = 0;
+    let success = false;
 
-    if (!page.url().includes('/jobs/view')) {
-      console.log("[DEBUG] Job details page not loaded. Current URL:", page.url());
-      throw new Error("Navigation to job details page failed.");
+    while (currentRetry < maxRetries && !success) {
+      try {
+        console.log(`[INFO] Navigation attempt ${currentRetry + 1} of ${maxRetries}`);
+        
+        // Set a shorter timeout for individual navigation attempts
+        const navigationTimeout = 60000;
+        
+        await Promise.race([
+          page.goto(jobUrl, { 
+            waitUntil: "domcontentloaded",
+            timeout: navigationTimeout
+          }),
+          new Promise((resolve, reject) => {
+            setTimeout(() => {
+              reject(new Error(`Individual navigation timeout of ${navigationTimeout}ms exceeded`));
+            }, navigationTimeout);
+          })
+        ]);
+
+        // Wait for critical selectors with a shorter timeout
+        await Promise.race([
+          page.waitForSelector(".job-details-jobs-unified-top-card__job-title", { timeout: 30000 }),
+          new Promise(resolve => setTimeout(resolve, 30000))
+        ]);
+
+        // Check if we're actually on the job details page
+        const currentUrl = page.url();
+        if (!currentUrl.includes('/jobs/view')) {
+          throw new Error('Not on job details page after navigation');
+        }
+
+        await waitForNetworkIdle(page, 10000);
+        success = true;
+        console.log('[INFO] Navigation successful');
+      } catch (error) {
+        currentRetry++;
+        console.warn(`[WARN] Navigation attempt ${currentRetry} failed:`, error.message);
+        
+        if (currentRetry === maxRetries) {
+          throw new Error(`All navigation attempts failed: ${error.message}`);
+        }
+        
+        // Clear memory and wait before retry
+        await page.evaluate(() => window.stop());
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
     }
 
     try {
       const seeMoreButtonSelector = ".jobs-description__footer-button";
-      await page.waitForSelector(seeMoreButtonSelector, { timeout: 10000 });
-      await page.click(seeMoreButtonSelector);
+      await Promise.race([
+        page.waitForSelector(seeMoreButtonSelector, { timeout: 10000 }),
+        new Promise(resolve => setTimeout(resolve, 10000))
+      ]);
+      await page.click(seeMoreButtonSelector).catch(() => {
+        console.warn("[WARN] 'See more' button not found or not clickable");
+      });
     } catch (error) {
-      console.warn("[WARN] 'See more' button not found or not clickable");
+      console.warn("[WARN] Error handling 'See more' button:", error.message);
     }
 
     jobDetails = await page.evaluate(() => {
@@ -134,7 +192,14 @@ async function getJobDetails(browser, jobUrl, li_at) {
     console.error("[ERROR] Failed to get job details:", error);
     throw new Error(`Error getting job details: ${error.message}`);
   } finally {
-    if (page) await page.close();
+    if (page) {
+      try {
+        await page.close();
+        console.log("[INFO] Page closed successfully");
+      } catch (closeError) {
+        console.error("[ERROR] Error closing page:", closeError);
+      }
+    }
   }
 }
 
