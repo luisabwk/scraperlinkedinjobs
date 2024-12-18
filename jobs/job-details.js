@@ -24,7 +24,8 @@ function isValidApplyUrl(url, companyName) {
       'pandape.com',
       'betterplace.com.br',
       'netvagas.com.br',
-      'indeed.com'
+      'indeed.com',
+      'jobfy.pro'
     ];
 
     return urlLower.includes(normalizedCompany) || platforms.some(platform => urlLower.includes(platform));
