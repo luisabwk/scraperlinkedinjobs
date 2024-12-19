@@ -1,39 +1,5 @@
 const puppeteer = require("puppeteer");
 
-function normalizeCompanyName(name) {
-  return name.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
-}
-
-function isValidApplyUrl(url, companyName) {
-  try {
-    const urlLower = url.toLowerCase();
-    const normalizedCompany = normalizeCompanyName(companyName);
-
-    const platforms = [
-      'gupy.io',
-      'kenoby.com',
-      'lever.co',
-      'greenhouse.io',
-      'abler.com.br',
-      'workday.com',
-      'breezy.hr',
-      'pandape.com',
-      'betterplace.com.br',
-      'netvagas.com.br',
-      'indeed.com',
-      'jobfy.pro'
-    ];
-
-    return urlLower.includes(normalizedCompany) || platforms.some(platform => urlLower.includes(platform));
-  } catch (error) {
-    return false;
-  }
-}
-
 async function getJobDetails(browser, jobUrl, li_at) {
   console.log(`[INFO] Accessing job details: ${jobUrl}`);
   let page = null;
@@ -108,7 +74,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
           await new Promise(resolve => setTimeout(resolve, 3000));
 
           const possibleNewTabUrl = await page.evaluate(() => window.__NEW_TAB_URL__);
-          if (possibleNewTabUrl && isValidApplyUrl(possibleNewTabUrl, jobDetails.company)) {
+          if (possibleNewTabUrl) {
             jobDetails.applyUrl = possibleNewTabUrl;
             console.log("[INFO] Application URL detected via window.open:", possibleNewTabUrl);
           } else {
@@ -118,19 +84,22 @@ async function getJobDetails(browser, jobUrl, li_at) {
 
             if (newPage) {
               const applyUrl = newPage.url();
-              if (isValidApplyUrl(applyUrl, jobDetails.company)) {
-                jobDetails.applyUrl = applyUrl;
-                console.log("[INFO] Application URL detected in new tab:", applyUrl);
-              }
+              jobDetails.applyUrl = applyUrl;
+              console.log("[INFO] Application URL detected in new tab:", applyUrl);
               await newPage.close();
+            } else {
+              console.log("[WARN] No valid application URL detected. Using jobUrl as fallback.");
+              jobDetails.applyUrl = jobUrl;
             }
           }
         }
       } else {
         console.warn("[WARN] Apply button not found.");
+        jobDetails.applyUrl = jobUrl;
       }
     } catch (error) {
       console.error("[ERROR] Error while processing application URL:", error.message);
+      jobDetails.applyUrl = jobUrl;
     }
 
     return jobDetails;
