@@ -95,28 +95,35 @@ async function getJobDetails(browser, jobUrl, li_at) {
     try {
       const applyButton = await page.$(applyButtonSelector);
       if (applyButton) {
-        console.log("[INFO] Apply button found. Clicking...");
-        await applyButton.click();
+        const buttonText = await page.evaluate(button => button.textContent.trim(), applyButton);
 
-        // Wait for potential redirection or new tab
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        const possibleNewTabUrl = await page.evaluate(() => window.__NEW_TAB_URL__);
-        if (possibleNewTabUrl && isValidApplyUrl(possibleNewTabUrl, jobDetails.company)) {
-          jobDetails.applyUrl = possibleNewTabUrl;
-          console.log("[INFO] Application URL detected via window.open:", possibleNewTabUrl);
+        if (buttonText.includes("Candidatura simplificada")) {
+          console.log("[INFO] 'Candidatura simplificada' detected. Using jobUrl as applyUrl.");
+          jobDetails.applyUrl = jobUrl;
         } else {
-          console.log("[INFO] No valid URL detected via window.open. Checking other methods...");
-          const newPagePromise = new Promise(resolve => browser.once('targetcreated', target => resolve(target.page())));
-          const newPage = await newPagePromise;
+          console.log("[INFO] External application detected. Clicking apply button...");
+          await applyButton.click();
 
-          if (newPage) {
-            const applyUrl = newPage.url();
-            if (isValidApplyUrl(applyUrl, jobDetails.company)) {
-              jobDetails.applyUrl = applyUrl;
-              console.log("[INFO] Application URL detected in new tab:", applyUrl);
+          // Wait for potential redirection or new tab
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          const possibleNewTabUrl = await page.evaluate(() => window.__NEW_TAB_URL__);
+          if (possibleNewTabUrl && isValidApplyUrl(possibleNewTabUrl, jobDetails.company)) {
+            jobDetails.applyUrl = possibleNewTabUrl;
+            console.log("[INFO] Application URL detected via window.open:", possibleNewTabUrl);
+          } else {
+            console.log("[INFO] No valid URL detected via window.open. Checking other methods...");
+            const newPagePromise = new Promise(resolve => browser.once('targetcreated', target => resolve(target.page())));
+            const newPage = await newPagePromise;
+
+            if (newPage) {
+              const applyUrl = newPage.url();
+              if (isValidApplyUrl(applyUrl, jobDetails.company)) {
+                jobDetails.applyUrl = applyUrl;
+                console.log("[INFO] Application URL detected in new tab:", applyUrl);
+              }
+              await newPage.close();
             }
-            await newPage.close();
           }
         }
       } else {
