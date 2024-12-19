@@ -49,6 +49,15 @@ async function getJobDetails(browser, jobUrl, li_at) {
     const cookies = [{ name: "li_at", value: li_at, domain: ".linkedin.com" }];
     await page.setCookie(...cookies);
 
+    // Intercept window.open
+    await page.evaluateOnNewDocument(() => {
+      const originalOpen = window.open;
+      window.open = function (...args) {
+        window.__NEW_TAB_URL__ = args[0];
+        return originalOpen.apply(window, args);
+      };
+    });
+
     await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
     console.log('[INFO] Job page loaded successfully.');
 
@@ -83,19 +92,38 @@ async function getJobDetails(browser, jobUrl, li_at) {
     console.log("[INFO] Checking application URL...");
 
     // Handle the apply button
-    const [applyButton] = await page.$$(applyButtonSelector);
-    if (applyButton) {
-      const newPagePromise = new Promise(resolve => browser.once('targetcreated', target => resolve(target.page())));
-      await applyButton.click();
+    try {
+      const applyButton = await page.$(applyButtonSelector);
+      if (applyButton) {
+        console.log("[INFO] Apply button found. Clicking...");
+        await applyButton.click();
 
-      const newPage = await newPagePromise;
-      if (newPage) {
-        const applyUrl = newPage.url();
-        if (isValidApplyUrl(applyUrl, jobDetails.company)) {
-          jobDetails.applyUrl = applyUrl;
+        // Wait for potential redirection or new tab
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const possibleNewTabUrl = await page.evaluate(() => window.__NEW_TAB_URL__);
+        if (possibleNewTabUrl && isValidApplyUrl(possibleNewTabUrl, jobDetails.company)) {
+          jobDetails.applyUrl = possibleNewTabUrl;
+          console.log("[INFO] Application URL detected via window.open:", possibleNewTabUrl);
+        } else {
+          console.log("[INFO] No valid URL detected via window.open. Checking other methods...");
+          const newPagePromise = new Promise(resolve => browser.once('targetcreated', target => resolve(target.page())));
+          const newPage = await newPagePromise;
+
+          if (newPage) {
+            const applyUrl = newPage.url();
+            if (isValidApplyUrl(applyUrl, jobDetails.company)) {
+              jobDetails.applyUrl = applyUrl;
+              console.log("[INFO] Application URL detected in new tab:", applyUrl);
+            }
+            await newPage.close();
+          }
         }
-        await newPage.close();
+      } else {
+        console.warn("[WARN] Apply button not found.");
       }
+    } catch (error) {
+      console.error("[ERROR] Error while processing application URL:", error.message);
     }
 
     return jobDetails;
