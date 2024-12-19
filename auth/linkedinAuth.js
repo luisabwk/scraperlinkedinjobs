@@ -1,151 +1,177 @@
-const puppeteerExtra = require("puppeteer-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-const fs = require("fs"); // For saving screenshots
-const path = require("path");
-const nodemailer = require("nodemailer"); // For sending emails
-const { ProxyAgent } = require('undici'); // For testing proxy
+const puppeteer = require("puppeteer");
+const axios = require("axios");
 
-puppeteerExtra.use(StealthPlugin());
+class LinkedInAuthManager {
+  constructor() {}
 
-const sendEmailWithScreenshot = async (screenshotPath, recipientEmail, emailConfig) => {
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: emailConfig.email,
-      pass: emailConfig.appPassword,
-    },
-  });
-
-  const mailOptions = {
-    from: emailConfig.email,
-    to: recipientEmail,
-    subject: "LinkedIn Automation Error Screenshot",
-    text: "An error occurred during LinkedIn automation. Please find the screenshot attached.",
-    attachments: [
-      {
-        filename: "screenshot_error.png",
-        path: screenshotPath,
-      },
-    ],
-  };
-
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log("[EMAIL] Screenshot sent successfully to", recipientEmail);
-  } catch (error) {
-    console.error("[EMAIL] Failed to send email:", error);
-  }
-};
-
-const testProxy = async (proxyConfig) => {
-  const proxyUrl = `http://${proxyConfig.username}:${proxyConfig.password}@${proxyConfig.host}:${proxyConfig.port}`;
-  const client = new ProxyAgent(proxyUrl);
-  const url = 'https://ipv4.icanhazip.com';
-
-  try {
-    console.log("[PROXY] Testing proxy...");
-    const response = await fetch(url, { dispatcher: client });
-    const data = await response.text();
-    console.log("[PROXY] Proxy IP Address:", data.trim());
-  } catch (error) {
-    console.error("[PROXY] Proxy test failed:", error);
-    throw new Error("Proxy test failed. Ensure the proxy credentials and server are correct.");
-  }
-};
-
-const authenticateLinkedIn = async (credentials, proxyConfig) => {
-  let browser;
-  try {
-    await testProxy(proxyConfig);
-
-    console.log("[AUTH] Launching browser with residential proxy...");
-    const args = [`--proxy-server=http://${proxyConfig.host}:${proxyConfig.port}`];
-
-    browser = await puppeteerExtra.launch({
-      headless: "new", // Use headful mode for debugging: set this to false
-      args: [
-        ...args,
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
-      ignoreHTTPSErrors: true,
-    });
-
-    const page = await browser.newPage();
-
-    // Authenticate proxy if credentials are provided
-    if (proxyConfig && proxyConfig.username && proxyConfig.password) {
-      console.log("[AUTH] Authenticating proxy...");
-      await page.authenticate({
-        username: proxyConfig.username,
-        password: proxyConfig.password,
-      });
-    }
-
-    // Rotate User-Agent
-    const userAgent =
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36";
-    await page.setUserAgent(userAgent);
-
-    // Navigate to LinkedIn
-    console.log("[AUTH] Starting login process...");
+  async getCookie(username, password, emailConfig, captchaApiKey) {
+    let browser, page;
     try {
-      await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle0" });
-    } catch (error) {
-      console.error("[AUTH] Proxy connection failed. Error:", error.message);
-      throw new Error("Proxy connection failed. Ensure the proxy credentials and server are correct.");
-    }
-
-    console.log("[AUTH] Filling credentials...");
-    await page.type("#username", credentials.linkedinUser);
-    await page.type("#password", credentials.linkedinPass);
-
-    console.log("[AUTH] Submitting login...");
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "networkidle0", timeout: 120000 }),
-      page.click(".btn__primary--large"),
-    ]);
-
-    console.log("[AUTH] Post-login URL:", page.url());
-    console.log("[AUTH] Post-login Page Title:", await page.title());
-
-    if (!page.url().includes("/feed")) {
-      const screenshotPath = path.join(__dirname, "screenshot_post_login_error.png");
-      await page.screenshot({ path: screenshotPath });
-      console.log("[DEBUG] Screenshot saved to", screenshotPath);
-
-      // Send the screenshot via email
-      await sendEmailWithScreenshot(screenshotPath, credentials.email.email, {
-        email: credentials.email.email,
-        appPassword: credentials.email.appPassword,
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
+      page = await browser.newPage();
 
-      throw new Error("Login failed - Not redirected to LinkedIn feed page. Screenshot captured.");
-    }
+      // Open LinkedIn login page
+      await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle2" });
 
-    console.log("[AUTH] Retrieving cookies...");
-    if (page.url().includes("/feed")) {
+      // Fill login credentials
+      await page.type("#username", username, { delay: 100 });
+      await page.type("#password", password, { delay: 100 });
+
+      // Click the login button
+      await page.click(".btn__primary--large");
+      await page.waitForTimeout(3000); // Wait for page load
+
+      // Check for captcha
+      const captchaExists = await page.$(".captcha-container");
+      if (captchaExists) {
+        console.log("[INFO] Captcha detected. Attempting to solve...");
+
+        const captchaSolution = await this.solveCaptcha(page, captchaApiKey);
+        if (!captchaSolution) {
+          throw new Error("Unable to solve captcha automatically.");
+        }
+
+        // Enter the captcha solution
+        await page.type("#captcha-field", captchaSolution, { delay: 100 });
+        await page.click(".btn__primary--large");
+        await page.waitForNavigation({ waitUntil: "networkidle2" });
+      }
+
+      // Check for verification code email
+      const verificationCode = await this.checkEmailForCode(emailConfig);
+      if (verificationCode) {
+        console.log("[INFO] Verification code found. Submitting...");
+        await page.type("#input__email_verification_pin", verificationCode, { delay: 100 });
+        await page.click("#email-pin-submit-button");
+        await page.waitForNavigation({ waitUntil: "networkidle2" });
+      }
+
+      // Check for successful login
       const cookies = await page.cookies();
       const liAtCookie = cookies.find((cookie) => cookie.name === "li_at");
 
       if (!liAtCookie) {
-        console.error("[AUTH] li_at cookie not found.");
-        throw new Error("Login failed - li_at cookie not found.");
+        throw new Error("Login failed. Cookie 'li_at' not found.");
       }
 
-      console.log("[AUTH] Authentication successful!");
       return liAtCookie.value;
-    } else {
-      throw new Error("Not on the expected feed page to fetch cookies.");
-    }
-  } finally {
-    if (browser) {
-      console.log("[AUTH] Closing browser...");
-      await browser.close();
+    } catch (error) {
+      throw new Error(`LinkedIn authentication failed: ${error.message}`);
+    } finally {
+      if (browser) await browser.close();
     }
   }
-};
 
-module.exports = { authenticateLinkedIn, testProxy, sendEmailWithScreenshot };
+  async solveCaptcha(page, captchaApiKey) {
+    try {
+      const captchaImage = await page.$eval(".captcha-image", (img) => img.src);
+
+      // Send captcha to solving service
+      const response = await axios.post("http://2captcha.com/in.php", null, {
+        params: {
+          key: captchaApiKey,
+          method: "base64",
+          body: captchaImage.split(",")[1],
+          json: 1,
+        },
+      });
+
+      const { request } = response.data;
+      if (!request) {
+        console.error("[ERROR] Failed to send captcha for solving.");
+        return null;
+      }
+
+      console.log("[INFO] Captcha sent for solving. Waiting for response...");
+
+      // Wait for the captcha to be solved
+      let solution = null;
+      for (let i = 0; i < 10; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        const result = await axios.get("http://2captcha.com/res.php", {
+          params: {
+            key: captchaApiKey,
+            action: "get",
+            id: request,
+            json: 1,
+          },
+        });
+
+        if (result.data.request === "CAPCHA_NOT_READY") {
+          continue;
+        }
+
+        if (result.data.status === 1) {
+          solution = result.data.request;
+          break;
+        }
+      }
+
+      if (!solution) {
+        console.error("[ERROR] Failed to solve captcha.");
+        return null;
+      }
+
+      console.log("[INFO] Captcha solved successfully.");
+      return solution;
+    } catch (error) {
+      console.error("[ERROR] Error solving captcha:", error.message);
+      return null;
+    }
+  }
+
+  async checkEmailForCode(emailConfig) {
+    const Imap = require("imap");
+    const { simpleParser } = require("mailparser");
+
+    return new Promise((resolve, reject) => {
+      const imap = new Imap({
+        user: emailConfig.email,
+        password: emailConfig.password,
+        host: emailConfig.host,
+        port: emailConfig.port || 993,
+        tls: true,
+      });
+
+      imap.once("ready", () => {
+        imap.openBox("INBOX", true, (err, box) => {
+          if (err) return reject(err);
+
+          const searchCriteria = ["UNSEEN", ["FROM", "security-noreply@linkedin.com"], ["SUBJECT", "Aqui está seu código de verificação"]];
+          imap.search(searchCriteria, (err, results) => {
+            if (err) return reject(err);
+
+            if (results.length === 0) {
+              imap.end();
+              return resolve(null);
+            }
+
+            const fetch = imap.fetch(results, { bodies: "" });
+            fetch.on("message", (msg) => {
+              msg.on("body", async (stream) => {
+                const parsed = await simpleParser(stream);
+                const codeMatch = parsed.subject.match(/\d{6}/);
+                if (codeMatch) {
+                  resolve(codeMatch[0]);
+                }
+              });
+            });
+
+            fetch.once("end", () => {
+              imap.end();
+            });
+          });
+        });
+      });
+
+      imap.once("error", (err) => reject(err));
+      imap.connect();
+    });
+  }
+}
+
+module.exports = LinkedInAuthManager;
