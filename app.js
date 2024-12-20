@@ -44,6 +44,7 @@ app.post("/auth", async (req, res) => {
     emailPassword,
     emailHost,
     emailPort,
+    captchaApiKey,
   } = req.body;
 
   if (!linkedinUsername || !linkedinPassword) {
@@ -58,13 +59,14 @@ app.post("/auth", async (req, res) => {
 
   try {
     const authManager = new LinkedInAuthManager();
-    const li_at = await authManager.loginWithVerification(
+    const li_at = await authManager.loginWithVerificationAndCaptcha(
       linkedinUsername,
       linkedinPassword,
       emailUsername,
       emailPassword,
       emailHost,
-      emailPort
+      emailPort,
+      captchaApiKey
     );
     res.status(200).json({ message: "Authentication successful", li_at });
   } catch (error) {
