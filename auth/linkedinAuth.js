@@ -43,16 +43,25 @@ class LinkedInAuthManager {
       }
 
       // Additional verification via email
-      const verificationCode = await this.getVerificationCodeFromEmail(
-        emailUsername,
-        emailPassword,
-        emailHost,
-        emailPort
-      );
+      try {
+        const verificationCode = await this.getVerificationCodeFromEmail(
+          emailUsername,
+          emailPassword,
+          emailHost,
+          emailPort
+        );
 
-      if (verificationCode) {
-        await page.type("#input__email_verification_pin", verificationCode);
-        await page.click("button[type=submit]");
+        if (verificationCode) {
+          const verificationInput = await page.$("#input__email_verification_pin");
+          if (!verificationInput) {
+            throw new Error("Verification input field not found");
+          }
+          await verificationInput.type(verificationCode);
+          await page.click("button[type=submit]");
+        }
+      } catch (verificationError) {
+        console.error("[ERROR] Email verification failed:", verificationError);
+        throw new Error("Email verification process encountered an issue");
       }
 
       // Wait for LinkedIn homepage to load
