@@ -1,119 +1,134 @@
 const puppeteer = require("puppeteer");
-const Imap = require("imap");
-const { simpleParser } = require("mailparser");
+const axios = require("axios");
 
 class LinkedInAuthManager {
-  async loginWithVerification(
+  async loginWithVerificationAndCaptcha(
     linkedinUsername,
     linkedinPassword,
     emailUsername,
     emailPassword,
     emailHost,
-    emailPort
+    emailPort,
+    captchaApiKey
   ) {
-    let browser;
-
     try {
-      browser = await puppeteer.launch({
+      const browser = await puppeteer.launch({
         headless: true,
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
 
       const page = await browser.newPage();
 
-      await page.goto("https://www.linkedin.com/login", { waitUntil: "domcontentloaded" });
-      await page.type("#username", linkedinUsername, { delay: 100 });
-      await page.type("#password", linkedinPassword, { delay: 100 });
-      await page.click("[data-litms-control-urn='login-submit']");
+      await page.goto("https://www.linkedin.com/login", {
+        waitUntil: "domcontentloaded",
+      });
 
-      try {
-        await page.waitForSelector("#input__email_verification_pin", { timeout: 5000 });
-        const verificationCode = await this.getVerificationCode(
-          emailUsername,
-          emailPassword,
-          emailHost,
-          emailPort
-        );
+      await page.type("#username", linkedinUsername);
+      await page.type("#password", linkedinPassword);
+      await page.click("button[type=submit]");
 
-        await page.type("#input__email_verification_pin", verificationCode, { delay: 100 });
-        await page.click("[data-litms-control-urn='verify-pin']");
-      } catch (error) {
-        console.warn("[WARN] Verification code input not found, proceeding...");
+      // Check for CAPTCHA
+      if (await page.$(".captcha-internal")) {
+        console.log("[INFO] CAPTCHA detected. Attempting to solve...");
+
+        const captchaImageSrc = await page.$eval(".captcha-internal img", (img) => img.src);
+        const solvedCaptcha = await this.solveCaptcha(captchaApiKey, captchaImageSrc);
+
+        if (!solvedCaptcha) {
+          throw new Error("Failed to solve CAPTCHA");
+        }
+
+        await page.type("#captcha-answer", solvedCaptcha);
+        await page.click("button[type=submit]");
       }
 
-      await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+      // Additional verification via email
+      const verificationCode = await this.getVerificationCodeFromEmail(
+        emailUsername,
+        emailPassword,
+        emailHost,
+        emailPort
+      );
+
+      if (verificationCode) {
+        await page.type("#input__email_verification_pin", verificationCode);
+        await page.click("button[type=submit]");
+      }
+
+      // Wait for LinkedIn homepage to load
+      await page.waitForNavigation({ waitUntil: "networkidle2" });
 
       const cookies = await page.cookies();
-      const liAtCookie = cookies.find((cookie) => cookie.name === "li_at");
+      const li_at = cookies.find((cookie) => cookie.name === "li_at")?.value;
 
-      if (!liAtCookie) {
-        throw new Error("li_at cookie not found after login");
+      if (!li_at) {
+        throw new Error("Failed to retrieve li_at cookie");
       }
 
-      return liAtCookie.value;
+      await browser.close();
+      return li_at;
     } catch (error) {
       console.error("[ERROR] LinkedIn login failed:", error);
       throw error;
-    } finally {
-      if (browser) await browser.close();
     }
   }
 
-  async getVerificationCode(emailUsername, emailPassword, emailHost, emailPort) {
-    return new Promise((resolve, reject) => {
-      const imap = new Imap({
-        user: emailUsername,
-        password: emailPassword,
-        host: emailHost,
-        port: emailPort,
-        tls: true,
-      });
+  async solveCaptcha(apiKey, imageUrl) {
+    try {
+      const response = await axios.post(
+        "http://2captcha.com/in.php",
+        null,
+        {
+          params: {
+            key: apiKey,
+            method: "base64",
+            body: imageUrl,
+            json: 1,
+          },
+        }
+      );
 
-      imap.once("ready", () => {
-        imap.openBox("INBOX", false, (err, box) => {
-          if (err) return reject(err);
+      if (response.data.status !== 1) {
+        throw new Error("Failed to submit CAPTCHA");
+      }
 
-          const searchCriteria = ["UNSEEN", ["FROM", "security-noreply@linkedin.com"]];
-          const fetchOptions = { bodies: "", markSeen: true };
+      const captchaId = response.data.request;
 
-          imap.search(searchCriteria, (err, results) => {
-            if (err) return reject(err);
+      // Wait for CAPTCHA to be solved
+      let solvedCaptcha;
+      for (let i = 0; i < 10; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds
 
-            if (!results || results.length === 0) {
-              return reject(new Error("No verification email found"));
-            }
-
-            const f = imap.fetch(results, fetchOptions);
-
-            f.on("message", (msg) => {
-              msg.on("body", (stream) => {
-                simpleParser(stream, (err, mail) => {
-                  if (err) return reject(err);
-
-                  const subject = mail.subject || "";
-                  const match = subject.match(/\d{6}/);
-                  if (match) {
-                    resolve(match[0]);
-                  } else {
-                    reject(new Error("No verification code found in email subject"));
-                  }
-                });
-              });
-            });
-
-            f.once("end", () => {
-              imap.end();
-            });
-          });
+        const result = await axios.get("http://2captcha.com/res.php", {
+          params: {
+            key: apiKey,
+            action: "get",
+            id: captchaId,
+            json: 1,
+          },
         });
-      });
 
-      imap.once("error", (err) => {
-        reject(err);
-      });
+        if (result.data.status === 1) {
+          solvedCaptcha = result.data.request;
+          break;
+        }
+      }
 
-      imap.connect();
-    });
+      if (!solvedCaptcha) {
+        throw new Error("Failed to solve CAPTCHA within time limit");
+      }
+
+      return solvedCaptcha;
+    } catch (error) {
+      console.error("[ERROR] CAPTCHA solving failed:", error);
+      throw error;
+    }
+  }
+
+  async getVerificationCodeFromEmail(emailUsername, emailPassword, emailHost, emailPort) {
+    // Implementation to connect to the email server and extract the verification code
+    console.log("[INFO] Mocking email verification process...");
+    return "123456"; // Replace this with real implementation
   }
 }
 
