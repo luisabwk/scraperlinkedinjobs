@@ -1,28 +1,20 @@
 const express = require("express");
 const cors = require("cors");
 const puppeteerExtra = require("puppeteer-extra");
-const getJobListings = require("./jobs/scrape-jobs");
-const getJobDetails = require("./jobs/job-details");
 const LinkedInAuthManager = require("./auth/linkedinAuth");
-const { ProxyAgent } = require("undici");
 const fetch = require("node-fetch");
+const HttpsProxyAgent = require("https-proxy-agent");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Shared browser state
-let browser;
-
-// Proxy configuration
+// Proxy Configuration
 const proxyUrl = "http://d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
-const proxyAgent = new ProxyAgent(proxyUrl, {
-  headers: {
-    'Proxy-Authorization': `Basic ${Buffer.from('usuario:senha').toString('base64')}`,
-  },
-});
+const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
-// Middleware to ensure browser is initialized
+// Middleware to Initialize Browser
+let browser;
 async function ensureBrowser(req, res, next) {
   try {
     if (!browser || !browser.isConnected()) {
@@ -39,44 +31,21 @@ async function ensureBrowser(req, res, next) {
         ],
       });
 
-      // Test proxy IP
-      const response = await fetch("https://icanhazip.com", {
-        dispatcher: proxyAgent,
-      });
-      if (!response.ok) {
-        throw new Error(`Proxy test failed with status ${response.status}`);
-      }
+      // Test Proxy IP
+      const response = await fetch("https://icanhazip.com", { agent: proxyAgent });
       const ip = await response.text();
       console.log(`[INFO] Proxy IP in use: ${ip.trim()}`);
     }
     next();
   } catch (error) {
-    console.error("[ERROR] Browser initialization failed:", error);
+    console.error("[ERROR] Failed to initialize browser:", error);
     res.status(500).json({ error: "Failed to initialize browser", details: error.message });
   }
 }
 
-// Endpoint for LinkedIn authentication
+// LinkedIn Authentication Endpoint
 app.post("/auth", async (req, res) => {
-  const {
-    linkedinUsername,
-    linkedinPassword,
-    emailUsername,
-    emailPassword,
-    emailHost,
-    emailPort,
-    captchaApiKey,
-  } = req.body;
-
-  if (!linkedinUsername || !linkedinPassword) {
-    return res.status(400).json({ error: "LinkedIn username and password are required" });
-  }
-
-  if (!emailUsername || !emailPassword || !emailHost || !emailPort) {
-    return res.status(400).json({
-      error: "Email credentials (username, password, host, port) are required",
-    });
-  }
+  const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
 
   try {
     const authManager = new LinkedInAuthManager();
@@ -96,50 +65,8 @@ app.post("/auth", async (req, res) => {
   }
 });
 
-// Endpoint to scrape job listings
-app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
-  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
-
-  if (!searchTerm || !location) {
-    return res.status(400).send({ error: "Search term and location are required" });
-  }
-
-  try {
-    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
-    res.status(200).send(results);
-  } catch (error) {
-    console.error("[ERROR] Failed to scrape jobs:", error);
-    res.status(500).send({ error: error.message });
-  }
-});
-
-// Endpoint to fetch job details
-app.post("/job-details", ensureBrowser, async (req, res) => {
-  const { jobUrl, li_at } = req.body;
-
-  if (!jobUrl) {
-    return res.status(400).send({ error: "Job URL is required" });
-  }
-
-  try {
-    const jobDetails = await getJobDetails(browser, jobUrl, li_at);
-    res.status(200).send(jobDetails);
-  } catch (error) {
-    console.error("[ERROR] Failed to fetch job details:", error);
-    res.status(500).send({ error: error.message });
-  }
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error("[ERROR] Middleware error handler:", err);
-  res.status(500).json({ error: "Internal server error", message: err.message });
-});
-
-// Start the server
+// Server Start
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`[INFO] Server is running on port ${PORT}`);
 });
-
-module.exports = app;
