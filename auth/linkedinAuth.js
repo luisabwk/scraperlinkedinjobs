@@ -1,5 +1,6 @@
 const puppeteer = require("puppeteer");
 const axios = require("axios");
+const { ProxyAgent } = require("undici");
 
 class LinkedInAuthManager {
   async loginWithVerificationAndCaptcha(
@@ -12,12 +13,26 @@ class LinkedInAuthManager {
     captchaApiKey
   ) {
     try {
+      const proxyUrl = "http://:d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u@_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
+      const proxyAgent = new ProxyAgent(proxyUrl);
+
       const browser = await puppeteer.launch({
         headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          `--proxy-server=${proxyUrl}`
+        ],
       });
 
       const page = await browser.newPage();
+
+      // Test Proxy
+      const response = await fetch("https://ipv4.icanhazip.com", {
+        dispatcher: proxyAgent,
+      });
+      const ip = await response.text();
+      console.log(`[INFO] Proxy IP in use: ${ip.trim()}`);
 
       await page.goto("https://www.linkedin.com/login", {
         waitUntil: "domcontentloaded",
@@ -72,13 +87,23 @@ class LinkedInAuthManager {
         console.log("[INFO] No additional verification required.");
       }
 
-      // Wait for specific element indicating success instead of full navigation
+      // Wait for multiple indicators of success
       try {
-        await page.waitForSelector(".global-nav__primary-link", {
-          timeout: 60000,
-        });
+        const success = await Promise.race([
+          page.waitForSelector(".global-nav__primary-link", { timeout: 60000 }),
+          page.waitForFunction(
+            () => document.querySelector("body").innerText.includes("Welcome"),
+            { timeout: 60000 }
+          ),
+        ]);
+
+        if (!success) {
+          throw new Error("Failed to detect LinkedIn homepage load");
+        }
       } catch (e) {
-        throw new Error("Timeout waiting for LinkedIn homepage to load");
+        console.error("[ERROR] Navigation or detection failed. Capturing screenshot...");
+        await page.screenshot({ path: "navigation_error.png" });
+        throw new Error("Timeout waiting for LinkedIn homepage or element detection");
       }
 
       const cookies = await page.cookies();
