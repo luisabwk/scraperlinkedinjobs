@@ -19,7 +19,13 @@ async function ensureBrowser(req, res, next) {
       console.log("[INFO] Initializing browser...");
       browser = await puppeteerExtra.launch({
         headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--disable-notifications",
+        ],
       });
     }
     next();
@@ -31,19 +37,39 @@ async function ensureBrowser(req, res, next) {
 
 // Endpoint for LinkedIn authentication
 app.post("/auth", async (req, res) => {
-  const { username, password } = req.body;
+  const {
+    linkedinUsername,
+    linkedinPassword,
+    emailUsername,
+    emailPassword,
+    emailHost,
+    emailPort,
+  } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).send({ error: "Username and password are required" });
+  if (!linkedinUsername || !linkedinPassword) {
+    return res.status(400).json({ error: "LinkedIn username and password are required" });
+  }
+
+  if (!emailUsername || !emailPassword || !emailHost || !emailPort) {
+    return res.status(400).json({
+      error: "Email credentials (username, password, host, port) are required",
+    });
   }
 
   try {
     const authManager = new LinkedInAuthManager();
-    const li_at = await authManager.authenticate(username, password);
-    res.status(200).send({ message: "Authentication successful", li_at });
+    const li_at = await authManager.loginWithVerification(
+      linkedinUsername,
+      linkedinPassword,
+      emailUsername,
+      emailPassword,
+      emailHost,
+      emailPort
+    );
+    res.status(200).json({ message: "Authentication successful", li_at });
   } catch (error) {
     console.error("[ERROR] Authentication failed:", error);
-    res.status(500).send({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -79,6 +105,12 @@ app.post("/job-details", ensureBrowser, async (req, res) => {
     console.error("[ERROR] Failed to fetch job details:", error);
     res.status(500).send({ error: error.message });
   }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error("[ERROR] Middleware error handler:", err);
+  res.status(500).json({ error: "Internal server error", message: err.message });
 });
 
 // Start the server
