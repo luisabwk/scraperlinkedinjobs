@@ -16,7 +16,8 @@
     "mailparser": "^3.6.5",
     "node-fetch": "^2.6.7",
     "puppeteer": "^23.10.4",
-    "puppeteer-extra": "^3.3.6"
+    "puppeteer-extra": "^3.3.6",
+    "undici": "^5.15.0"
   },
   "engines": {
     "node": "20.x"
