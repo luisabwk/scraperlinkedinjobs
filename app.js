@@ -4,6 +4,7 @@ const puppeteerExtra = require("puppeteer-extra");
 const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
 const LinkedInAuthManager = require("./auth/linkedinAuth");
+const { ProxyAgent } = require("undici");
 
 const app = express();
 app.use(express.json());
@@ -12,21 +13,33 @@ app.use(cors());
 // Shared browser state
 let browser;
 
+// Proxy configuration
+const proxyUrl = "http://:d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u@_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
+const proxyAgent = new ProxyAgent(proxyUrl);
+
 // Middleware to ensure browser is initialized
 async function ensureBrowser(req, res, next) {
   try {
     if (!browser || !browser.isConnected()) {
-      console.log("[INFO] Initializing browser...");
+      console.log("[INFO] Initializing browser with proxy...");
       browser = await puppeteerExtra.launch({
         headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
+          `--proxy-server=${proxyUrl}`,
           "--disable-dev-shm-usage",
           "--disable-gpu",
           "--disable-notifications",
         ],
       });
+
+      // Test proxy IP
+      const response = await fetch("https://ipv4.icanhazip.com", {
+        dispatcher: proxyAgent,
+      });
+      const ip = await response.text();
+      console.log(`[INFO] Proxy IP in use: ${ip.trim()}`);
     }
     next();
   } catch (error) {
