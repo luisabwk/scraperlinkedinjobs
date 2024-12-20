@@ -5,6 +5,7 @@ const getJobListings = require("./jobs/scrape-jobs");
 const getJobDetails = require("./jobs/job-details");
 const LinkedInAuthManager = require("./auth/linkedinAuth");
 const { ProxyAgent } = require("undici");
+const fetch = require("node-fetch");
 
 const app = express();
 app.use(express.json());
@@ -14,7 +15,7 @@ app.use(cors());
 let browser;
 
 // Proxy configuration
-const proxyUrl = "http://:d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u@_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
+const proxyUrl = "http://d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1@_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
 const proxyAgent = new ProxyAgent(proxyUrl, {
   headers: {
     'Proxy-Authorization': `Basic ${Buffer.from('usuario:senha').toString('base64')}`,
@@ -42,13 +43,16 @@ async function ensureBrowser(req, res, next) {
       const response = await fetch("https://icanhazip.com", {
         dispatcher: proxyAgent,
       });
+      if (!response.ok) {
+        throw new Error(`Proxy test failed with status ${response.status}`);
+      }
       const ip = await response.text();
       console.log(`[INFO] Proxy IP in use: ${ip.trim()}`);
     }
     next();
   } catch (error) {
     console.error("[ERROR] Browser initialization failed:", error);
-    res.status(500).json({ error: "Failed to initialize browser" });
+    res.status(500).json({ error: "Failed to initialize browser", details: error.message });
   }
 }
 
