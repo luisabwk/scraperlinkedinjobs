@@ -13,8 +13,12 @@ class LinkedInAuthManager {
     captchaApiKey
   ) {
     try {
-      const proxyUrl = "http://:d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u@_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
-      const proxyAgent = new ProxyAgent(proxyUrl);
+      const proxyUrl = "http://usuario:senha@_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
+      const proxyAgent = new ProxyAgent(proxyUrl, {
+        headers: {
+          'Proxy-Authorization': `Basic ${Buffer.from('usuario:senha').toString('base64')}`,
+        },
+      });
 
       const browser = await puppeteer.launch({
         headless: true,
@@ -28,9 +32,12 @@ class LinkedInAuthManager {
       const page = await browser.newPage();
 
       // Test Proxy
-      const response = await fetch("https://ipv4.icanhazip.com", {
+      const response = await fetch("https://icanhazip.com", {
         dispatcher: proxyAgent,
       });
+      if (!response.ok) {
+        throw new Error(`Proxy test failed with status ${response.status}`);
+      }
       const ip = await response.text();
       console.log(`[INFO] Proxy IP in use: ${ip.trim()}`);
 
