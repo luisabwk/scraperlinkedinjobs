@@ -42,8 +42,12 @@ class LinkedInAuthManager {
         await page.click("button[type=submit]");
       }
 
-      // Additional verification via email
-      try {
+      // Check for additional verification step
+      const verificationPageContent = await page.content();
+
+      if (verificationPageContent.includes("verification code")) {
+        console.log("[INFO] Email verification step detected.");
+
         const verificationCode = await this.getVerificationCodeFromEmail(
           emailUsername,
           emailPassword,
@@ -58,10 +62,14 @@ class LinkedInAuthManager {
           }
           await verificationInput.type(verificationCode);
           await page.click("button[type=submit]");
+        } else {
+          throw new Error("Verification code not received from email");
         }
-      } catch (verificationError) {
-        console.error("[ERROR] Email verification failed:", verificationError);
-        throw new Error("Email verification process encountered an issue");
+      } else if (verificationPageContent.includes("phone verification")) {
+        console.log("[INFO] Phone verification step detected. Please complete manually.");
+        throw new Error("Phone verification is not supported in this automation.");
+      } else {
+        console.log("[INFO] No additional verification required.");
       }
 
       // Wait for LinkedIn homepage to load
