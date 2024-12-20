@@ -72,8 +72,14 @@ class LinkedInAuthManager {
         console.log("[INFO] No additional verification required.");
       }
 
-      // Wait for LinkedIn homepage to load with increased timeout
-      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 });
+      // Wait for specific element indicating success instead of full navigation
+      try {
+        await page.waitForSelector(".global-nav__primary-link", {
+          timeout: 60000,
+        });
+      } catch (e) {
+        throw new Error("Timeout waiting for LinkedIn homepage to load");
+      }
 
       const cookies = await page.cookies();
       const li_at = cookies.find((cookie) => cookie.name === "li_at")?.value;
