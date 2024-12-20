@@ -15,7 +15,7 @@ app.use(cors());
 let browser;
 
 // Proxy configuration
-const proxyUrl = "http://d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1@_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
+const proxyUrl = "http://d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
 const proxyAgent = new ProxyAgent(proxyUrl, {
   headers: {
     'Proxy-Authorization': `Basic ${Buffer.from('usuario:senha').toString('base64')}`,
