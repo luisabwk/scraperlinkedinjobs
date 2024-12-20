@@ -1,9 +1,18 @@
 const puppeteer = require("puppeteer");
-const imap = require("imap-simple");
+const Imap = require("imap");
+const { simpleParser } = require("mailparser");
 
 class LinkedInAuthManager {
-  async authenticate(username, password, emailConfig) {
+  async loginWithVerification(
+    linkedinUsername,
+    linkedinPassword,
+    emailUsername,
+    emailPassword,
+    emailHost,
+    emailPort
+  ) {
     let browser;
+
     try {
       browser = await puppeteer.launch({
         headless: true,
@@ -11,76 +20,100 @@ class LinkedInAuthManager {
       });
 
       const page = await browser.newPage();
-      await page.goto("https://www.linkedin.com/login");
 
-      await page.type("#username", username);
-      await page.type("#password", password);
-      await page.click("button[type='submit']");
-      await page.waitForNavigation();
+      await page.goto("https://www.linkedin.com/login", { waitUntil: "domcontentloaded" });
+      await page.type("#username", linkedinUsername, { delay: 100 });
+      await page.type("#password", linkedinPassword, { delay: 100 });
+      await page.click("[data-litms-control-urn='login-submit']");
 
-      if (await this.isVerificationRequired(page)) {
-        const verificationCode = await this.fetchVerificationCode(emailConfig);
-        if (!verificationCode) {
-          throw new Error("Failed to retrieve verification code");
-        }
+      try {
+        await page.waitForSelector("#input__email_verification_pin", { timeout: 5000 });
+        const verificationCode = await this.getVerificationCode(
+          emailUsername,
+          emailPassword,
+          emailHost,
+          emailPort
+        );
 
-        await page.type("input#input__email_verification_pin", verificationCode);
-        await page.click("button[type='submit']");
-        await page.waitForNavigation();
+        await page.type("#input__email_verification_pin", verificationCode, { delay: 100 });
+        await page.click("[data-litms-control-urn='verify-pin']");
+      } catch (error) {
+        console.warn("[WARN] Verification code input not found, proceeding...");
       }
 
+      await page.waitForNavigation({ waitUntil: "domcontentloaded" });
+
       const cookies = await page.cookies();
-      const li_atCookie = cookies.find((cookie) => cookie.name === "li_at");
-      if (!li_atCookie) {
+      const liAtCookie = cookies.find((cookie) => cookie.name === "li_at");
+
+      if (!liAtCookie) {
         throw new Error("li_at cookie not found after login");
       }
 
-      return li_atCookie.value;
+      return liAtCookie.value;
     } catch (error) {
-      console.error("[ERROR] Authentication failed:", error);
+      console.error("[ERROR] LinkedIn login failed:", error);
       throw error;
     } finally {
-      if (browser) {
-        await browser.close();
-      }
+      if (browser) await browser.close();
     }
   }
 
-  async isVerificationRequired(page) {
-    try {
-      await page.waitForSelector("input#input__email_verification_pin", { timeout: 5000 });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async fetchVerificationCode(emailConfig) {
-    const config = {
-      imap: {
-        user: emailConfig.username,
-        password: emailConfig.password,
-        host: emailConfig.host,
-        port: 993,
+  async getVerificationCode(emailUsername, emailPassword, emailHost, emailPort) {
+    return new Promise((resolve, reject) => {
+      const imap = new Imap({
+        user: emailUsername,
+        password: emailPassword,
+        host: emailHost,
+        port: emailPort,
         tls: true,
-      },
-    };
+      });
 
-    const connection = await imap.connect(config);
-    await connection.openBox("INBOX");
+      imap.once("ready", () => {
+        imap.openBox("INBOX", false, (err, box) => {
+          if (err) return reject(err);
 
-    const searchCriteria = [["UNSEEN"], ["HEADER", "SUBJECT", "Aqui está seu código de verificação"]];
-    const fetchOptions = { bodies: ["HEADER"], markSeen: true };
-    const messages = await connection.search(searchCriteria, fetchOptions);
+          const searchCriteria = ["UNSEEN", ["FROM", "security-noreply@linkedin.com"]];
+          const fetchOptions = { bodies: "", markSeen: true };
 
-    if (messages.length === 0) {
-      return null;
-    }
+          imap.search(searchCriteria, (err, results) => {
+            if (err) return reject(err);
 
-    const subject = messages[0].parts[0].body.subject[0];
-    const match = subject.match(/\b\d{6}\b/);
+            if (!results || results.length === 0) {
+              return reject(new Error("No verification email found"));
+            }
 
-    return match ? match[0] : null;
+            const f = imap.fetch(results, fetchOptions);
+
+            f.on("message", (msg) => {
+              msg.on("body", (stream) => {
+                simpleParser(stream, (err, mail) => {
+                  if (err) return reject(err);
+
+                  const subject = mail.subject || "";
+                  const match = subject.match(/\d{6}/);
+                  if (match) {
+                    resolve(match[0]);
+                  } else {
+                    reject(new Error("No verification code found in email subject"));
+                  }
+                });
+              });
+            });
+
+            f.once("end", () => {
+              imap.end();
+            });
+          });
+        });
+      });
+
+      imap.once("error", (err) => {
+        reject(err);
+      });
+
+      imap.connect();
+    });
   }
 }
 
