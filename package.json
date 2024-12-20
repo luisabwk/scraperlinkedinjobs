@@ -17,7 +17,8 @@
     "dotenv": "16.3.1",
     "mailparser": "3.6.5",
     "imap-simple": "5.1.0",
-     "undici": "^5.15.0"
+    "undici": "^5.15.0",
+    "node-fetch": "^2.6.7"
   },
   "engines": {
     "node": "20.x"
