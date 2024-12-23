@@ -15,13 +15,16 @@ app.use(cors());
 const proxyUrl = "http://d4Xzafgb5TJfSLpI:YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1@geo.iproyal.com:12321";
 const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
-// Middleware to Initialize Browser
-let browser;
-async function ensureBrowser(req, res, next) {
+// Browsers
+let browserWithProxy;
+let browserWithoutProxy;
+
+// Middleware to Initialize Browser with Proxy
+async function ensureBrowserWithProxy(req, res, next) {
   try {
-    if (!browser || !browser.isConnected()) {
+    if (!browserWithProxy || !browserWithProxy.isConnected()) {
       console.log("[INFO] Initializing browser with proxy...");
-      browser = await puppeteerExtra.launch({
+      browserWithProxy = await puppeteerExtra.launch({
         headless: true,
         args: [
           "--no-sandbox",
@@ -40,13 +43,36 @@ async function ensureBrowser(req, res, next) {
     }
     next();
   } catch (error) {
-    console.error("[ERROR] Failed to initialize browser:", error);
-    res.status(500).json({ error: "Failed to initialize browser", details: error.message });
+    console.error("[ERROR] Failed to initialize browser with proxy:", error);
+    res.status(500).json({ error: "Failed to initialize browser with proxy", details: error.message });
+  }
+}
+
+// Middleware to Initialize Browser without Proxy
+async function ensureBrowserWithoutProxy(req, res, next) {
+  try {
+    if (!browserWithoutProxy || !browserWithoutProxy.isConnected()) {
+      console.log("[INFO] Initializing browser without proxy...");
+      browserWithoutProxy = await puppeteerExtra.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--disable-notifications",
+        ],
+      });
+    }
+    next();
+  } catch (error) {
+    console.error("[ERROR] Failed to initialize browser without proxy:", error);
+    res.status(500).json({ error: "Failed to initialize browser without proxy", details: error.message });
   }
 }
 
 // LinkedIn Authentication Endpoint
-app.post("/auth", async (req, res) => {
+app.post("/auth", ensureBrowserWithProxy, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
 
   try {
@@ -68,7 +94,7 @@ app.post("/auth", async (req, res) => {
 });
 
 // Endpoint for Scraping Job Listings
-app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
+app.post("/scrape-jobs", ensureBrowserWithoutProxy, async (req, res) => {
   const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
 
   if (!searchTerm || !location) {
@@ -76,7 +102,7 @@ app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
   }
 
   try {
-    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
+    const results = await getJobListings(browserWithoutProxy, searchTerm, location, li_at, maxJobs);
     res.status(200).json(results);
   } catch (error) {
     console.error("[ERROR] Failed to scrape jobs:", error);
@@ -85,7 +111,7 @@ app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
 });
 
 // Endpoint for Fetching Job Details
-app.post("/job-details", ensureBrowser, async (req, res) => {
+app.post("/job-details", ensureBrowserWithoutProxy, async (req, res) => {
   const { jobUrl, li_at } = req.body;
 
   if (!jobUrl) {
@@ -93,7 +119,7 @@ app.post("/job-details", ensureBrowser, async (req, res) => {
   }
 
   try {
-    const jobDetails = await getJobDetails(browser, jobUrl, li_at);
+    const jobDetails = await getJobDetails(browserWithoutProxy, jobUrl, li_at);
     res.status(200).json(jobDetails);
   } catch (error) {
     console.error("[ERROR] Failed to fetch job details:", error);
