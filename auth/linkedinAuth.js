@@ -13,15 +13,19 @@ class LinkedInAuthManager {
     captchaApiKey
   ) {
     const proxyUrl = "http://geo.iproyal.com:12321";
-    const proxyAgent = new HttpsProxyAgent(proxyUrl, {
-      username: "d4Xzafgb5TJfSLpI",
-      password: "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1",
-    });
+    const username = "d4Xzafgb5TJfSLpI";
+    const password = "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1";
 
     try {
       // Test Proxy by accessing LinkedIn login page
       console.log("[INFO] Testing proxy with LinkedIn login page...");
-      const response = await fetch("https://www.linkedin.com/login", { agent: proxyAgent });
+      const response = await fetch("https://www.linkedin.com/login", {
+        agent: new HttpsProxyAgent(proxyUrl),
+        headers: {
+          "Proxy-Authorization": `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+        },
+      });
+
       if (!response.ok) {
         throw new Error(`Proxy test failed with status ${response.status}`);
       }
@@ -38,10 +42,7 @@ class LinkedInAuthManager {
       });
 
       const page = await browser.newPage();
-      await page.authenticate({
-         username: "d4Xzafgb5TJfSLpI",
-      password: "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1",
-      });
+      await page.authenticate({ username, password });
 
       await page.goto("https://www.linkedin.com/login", { waitUntil: "domcontentloaded" });
 
