@@ -2,8 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const puppeteerExtra = require("puppeteer-extra");
 const LinkedInAuthManager = require("./auth/linkedinAuth");
-const getJobListings = require("./jobs/scrape-jobs"); // Import função scrape-jobs
-const getJobDetails = require("./jobs/job-details"); // Import função job-details
+const getJobListings = require("./jobs/scrape-jobs");
+const getJobDetails = require("./jobs/job-details");
 const fetch = require("node-fetch");
 const HttpsProxyAgent = require("https-proxy-agent");
 
