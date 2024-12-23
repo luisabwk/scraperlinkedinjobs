@@ -17,21 +17,40 @@ class LinkedInAuthManager {
     const password = "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1";
 
     try {
-      // Test Proxy
+      // Test Proxy with Retentativas
+      console.log("[INFO] Testing proxy with LinkedIn login page...");
       const proxyAgent = new ProxyAgent(proxyUrl, {
         headers: {
           "Proxy-Authorization": `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
         },
       });
 
-      const response = await fetch("https://www.linkedin.com/login", { dispatcher: proxyAgent });
-      if (!response.ok) {
-        throw new Error(`Proxy test failed with status ${response.status}`);
+      async function fetchWithRetry(url, options, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+              throw new Error(`HTTP status ${response.status}`);
+            }
+            return response;
+          } catch (error) {
+            if (attempt === retries) throw error;
+            console.warn(`[WARN] Retry ${attempt}/${retries}: ${error.message}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+        }
       }
 
-      // Launch Puppeteer
+      const response = await fetchWithRetry("https://www.linkedin.com/login", {
+        dispatcher: proxyAgent,
+        timeout: 120000,
+      });
+
+      console.log("[INFO] Proxy successfully accessed LinkedIn login page.");
+
+      // Launch Puppeteer with Proxy
       const browser = await puppeteer.launch({
-        headless: false, // Debug mode
+        headless: "new", // Novo modo headless
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
