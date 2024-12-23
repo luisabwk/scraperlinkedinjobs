@@ -19,33 +19,38 @@ class LinkedInAuthManager {
     try {
       // Test Proxy by accessing LinkedIn login page
       console.log("[INFO] Testing proxy with LinkedIn login page...");
-      const response = await fetch("https://www.linkedin.com/login", {
-        agent: new HttpsProxyAgent(proxyUrl),
-        headers: {
-          "Proxy-Authorization": `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
-        },
+      const agent = new HttpsProxyAgent(proxyUrl, {
+        username,
+        password,
       });
+
+      const response = await fetch("https://www.linkedin.com/login", { agent });
 
       if (!response.ok) {
         throw new Error(`Proxy test failed with status ${response.status}`);
       }
-      console.log(`[INFO] Proxy successfully accessed LinkedIn login page.`);
 
+      console.log("[INFO] Proxy successfully accessed LinkedIn login page.");
+
+      // Launch Puppeteer with proxy
       const browser = await puppeteer.launch({
         headless: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
           `--proxy-server=${proxyUrl}`,
-          "--ignore-certificate-errors",
         ],
       });
 
       const page = await browser.newPage();
+
+      // Configure Proxy Authentication
       await page.authenticate({ username, password });
 
+      // Navigate to LinkedIn login page
       await page.goto("https://www.linkedin.com/login", { waitUntil: "domcontentloaded" });
 
+      // Perform login
       await page.type("#username", linkedinUsername);
       await page.type("#password", linkedinPassword);
       await page.click("button[type=submit]");
