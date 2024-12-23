@@ -81,7 +81,9 @@ class LinkedInAuthManager {
       // Perform login
       await page.type("#username", linkedinUsername);
       await page.type("#password", linkedinPassword);
-      await page.click("button[type=submit]");
+
+      // Update: Clicking the button using the new class
+      await page.click(".btn__primary--large.from__button--floating");
 
       // Wait for successful login
       await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 120000 });
