@@ -17,7 +17,6 @@ class LinkedInAuthManager {
     const password = "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1";
 
     try {
-      // Test Proxy with Retentativas
       console.log("[INFO] Testing proxy with LinkedIn login page...");
       const proxyAgent = new ProxyAgent(proxyUrl, {
         headers: {
@@ -25,70 +24,42 @@ class LinkedInAuthManager {
         },
       });
 
-      async function fetchWithRetry(url, options, retries = 3) {
-        for (let attempt = 1; attempt <= retries; attempt++) {
-          try {
-            const response = await fetch(url, options);
-            if (!response.ok) {
-              throw new Error(`HTTP status ${response.status}`);
-            }
-            return response;
-          } catch (error) {
-            if (attempt === retries) throw error;
-            console.warn(`[WARN] Retry ${attempt}/${retries}: ${error.message}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
-          }
-        }
-      }
-
-      const response = await fetchWithRetry("https://www.linkedin.com/login", {
+      const response = await fetch("https://www.linkedin.com/login", {
         dispatcher: proxyAgent,
         timeout: 120000,
       });
 
-      console.log("[INFO] Proxy successfully accessed LinkedIn login page.");
+      if (!response.ok) {
+        throw new Error(`Proxy test failed with status ${response.status}`);
+      }
 
-      // Launch Puppeteer with Proxy
       const browser = await puppeteer.launch({
-        headless: "new", // Novo modo headless
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          `--proxy-server=${proxyUrl}`,
-        ],
+        headless: "new",
+        args: ["--no-sandbox", "--disable-setuid-sandbox", `--proxy-server=${proxyUrl}`],
       });
 
       const page = await browser.newPage();
-
-      // Configure Proxy Authentication
       await page.authenticate({ username, password });
-
-      // Set User-Agent
       await page.setUserAgent(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
       );
 
-      // Navigate to LinkedIn login page
-      try {
-        await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle2", timeout: 120000 });
-        console.log("[INFO] Successfully accessed LinkedIn login page.");
-      } catch (error) {
-        console.error("[ERROR] Navigation timeout or error occurred. Capturing screenshot...");
-        await page.screenshot({ path: "login_timeout.png" });
-        throw error;
-      }
+      await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle2", timeout: 120000 });
 
-      // Perform login
       await page.type("#username", linkedinUsername);
       await page.type("#password", linkedinPassword);
 
-      // Update: Clicking the button using the new class
       await page.click(".btn__primary--large.from__button--floating");
 
-      // Wait for successful login
-      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 120000 });
+      try {
+        await page.waitForSelector(".global-nav__primary-link", { timeout: 120000 });
+        console.log("[INFO] Successfully logged in and reached the homepage.");
+      } catch (error) {
+        console.error("[ERROR] Navigation timeout. Capturing screenshot...");
+        await page.screenshot({ path: "login_failed.png" });
+        throw error;
+      }
 
-      // Extract cookie li_at
       const cookies = await page.cookies();
       const li_at = cookies.find((cookie) => cookie.name === "li_at")?.value;
 
