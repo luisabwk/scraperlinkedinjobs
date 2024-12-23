@@ -7,11 +7,17 @@ const scrapeJobs = async (browser, searchTerm, location, li_at, maxJobs = 50) =>
     await page.setCookie({ name: "li_at", value: li_at, domain: ".linkedin.com" });
     console.log("[INFO] Cookie 'li_at' configurado com sucesso.");
 
+    // Configurar User-Agent
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+    );
+
     // URL inicial para buscar vagas
     const searchUrl = `https://www.linkedin.com/jobs/search?keywords=${encodeURIComponent(searchTerm)}&location=${encodeURIComponent(location)}&geoId=106057199&f_TPR=r86400`;
     console.log(`[INFO] Acessando a URL inicial: ${searchUrl}`);
 
-    await page.goto(searchUrl, { waitUntil: "networkidle2", timeout: 60000 });
+    // Navegar para a página de busca com retentativas
+    await navigateWithRetry(page, searchUrl);
 
     let jobs = [];
     let attempts = 0;
@@ -58,3 +64,19 @@ const scrapeJobs = async (browser, searchTerm, location, li_at, maxJobs = 50) =>
 };
 
 module.exports = scrapeJobs;
+
+// Helper para retentativas
+async function navigateWithRetry(page, url, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`[INFO] Attempt ${attempt} to navigate to ${url}`);
+      await page.goto(url, { waitUntil: "networkidle2", timeout: 120000 });
+      console.log("[INFO] Navigation successful.");
+      return;
+    } catch (error) {
+      console.warn(`[WARN] Navigation attempt ${attempt} failed: ${error.message}`);
+      if (attempt === retries) throw error;
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+}
