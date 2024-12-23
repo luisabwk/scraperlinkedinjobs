@@ -39,8 +39,8 @@ class LinkedInAuthManager {
 
       const page = await browser.newPage();
       await page.authenticate({
-        username: "d4Xzafgb5TJfSLpI",
-        password: "YQhSnyw789HDtj4u",
+         username: "d4Xzafgb5TJfSLpI",
+      password: "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1",
       });
 
       await page.goto("https://www.linkedin.com/login", { waitUntil: "domcontentloaded" });
