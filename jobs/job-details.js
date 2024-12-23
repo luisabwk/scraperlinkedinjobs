@@ -25,10 +25,10 @@ async function getJobDetails(browser, jobUrl, li_at) {
     });
 
     await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-    console.log('[INFO] Job page loaded successfully.');
+    console.log("[INFO] Job page loaded successfully.");
 
     const seeMoreButtonSelector = ".jobs-description__footer-button";
-    const applyButtonSelector = '.jobs-apply-button--top-card';
+    const applyButtonSelector = ".jobs-apply-button--top-card";
 
     // Expand full job description
     try {
@@ -66,8 +66,8 @@ async function getJobDetails(browser, jobUrl, li_at) {
         if (buttonText.includes("Candidatura simplificada")) {
           console.log("[INFO] 'Candidatura simplificada' detected. Using jobUrl as applyUrl.");
           jobDetails.applyUrl = jobUrl;
-        } else {
-          console.log("[INFO] External application detected. Clicking apply button...");
+        } else if (buttonText.includes("Candidatar-se")) {
+          console.log("[INFO] 'Candidatar-se' detected. Clicking apply button...");
           await applyButton.click();
 
           // Wait for potential redirection or new tab
@@ -78,7 +78,7 @@ async function getJobDetails(browser, jobUrl, li_at) {
             jobDetails.applyUrl = possibleNewTabUrl;
             console.log("[INFO] Application URL detected via window.open:", possibleNewTabUrl);
           } else {
-            console.log("[INFO] No valid URL detected via window.open. Checking other methods...");
+            console.log("[INFO] No valid URL detected via window.open. Checking new tab...");
             const newPagePromise = new Promise(resolve => browser.once('targetcreated', target => resolve(target.page())));
             const newPage = await newPagePromise;
 
@@ -92,6 +92,9 @@ async function getJobDetails(browser, jobUrl, li_at) {
               jobDetails.applyUrl = jobUrl;
             }
           }
+        } else {
+          console.log("[INFO] External application detected. Using jobUrl as fallback.");
+          jobDetails.applyUrl = jobUrl;
         }
       } else {
         console.warn("[WARN] Apply button not found.");
