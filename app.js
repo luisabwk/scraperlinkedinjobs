@@ -75,6 +75,10 @@ async function ensureBrowserWithoutProxy(req, res, next) {
 app.post("/auth", ensureBrowserWithProxy, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
 
+  if (!linkedinUsername || !linkedinPassword) {
+    return res.status(400).json({ error: "LinkedIn username and password are required" });
+  }
+
   try {
     const authManager = new LinkedInAuthManager();
     const li_at = await authManager.loginWithVerificationAndCaptcha(
