@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const puppeteerExtra = require("puppeteer-extra");
 const LinkedInAuthManager = require("./auth/linkedinAuth");
+const getJobListings = require("./jobs/scrape-jobs"); // Import função scrape-jobs
+const getJobDetails = require("./jobs/job-details"); // Import função job-details
 const fetch = require("node-fetch");
 const HttpsProxyAgent = require("https-proxy-agent");
 
@@ -65,8 +67,44 @@ app.post("/auth", async (req, res) => {
   }
 });
 
+// Endpoint for Scraping Job Listings
+app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
+  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
+
+  if (!searchTerm || !location) {
+    return res.status(400).json({ error: "Search term and location are required" });
+  }
+
+  try {
+    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
+    res.status(200).json(results);
+  } catch (error) {
+    console.error("[ERROR] Failed to scrape jobs:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint for Fetching Job Details
+app.post("/job-details", ensureBrowser, async (req, res) => {
+  const { jobUrl, li_at } = req.body;
+
+  if (!jobUrl) {
+    return res.status(400).json({ error: "Job URL is required" });
+  }
+
+  try {
+    const jobDetails = await getJobDetails(browser, jobUrl, li_at);
+    res.status(200).json(jobDetails);
+  } catch (error) {
+    console.error("[ERROR] Failed to fetch job details:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Server Start
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`[INFO] Server is running on port ${PORT}`);
 });
+
+module.exports = app;
