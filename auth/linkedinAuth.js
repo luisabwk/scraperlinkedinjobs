@@ -1,5 +1,5 @@
 const puppeteer = require("puppeteer");
-const HttpsProxyAgent = require("https-proxy-agent");
+const { ProxyAgent } = require("undici");
 const fetch = require("node-fetch");
 
 class LinkedInAuthManager {
@@ -19,12 +19,13 @@ class LinkedInAuthManager {
     try {
       // Test Proxy by accessing LinkedIn login page
       console.log("[INFO] Testing proxy with LinkedIn login page...");
-      const agent = new HttpsProxyAgent(proxyUrl, {
-        username,
-        password,
+      const proxyAgent = new ProxyAgent(proxyUrl, {
+        headers: {
+          "Proxy-Authorization": `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+        },
       });
 
-      const response = await fetch("https://www.linkedin.com/login", { agent });
+      const response = await fetch("https://www.linkedin.com/login", { dispatcher: proxyAgent });
 
       if (!response.ok) {
         throw new Error(`Proxy test failed with status ${response.status}`);
