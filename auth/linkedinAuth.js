@@ -17,8 +17,7 @@ class LinkedInAuthManager {
     const password = "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1";
 
     try {
-      // Test Proxy by accessing LinkedIn login page
-      console.log("[INFO] Testing proxy with LinkedIn login page...");
+      // Test Proxy
       const proxyAgent = new ProxyAgent(proxyUrl, {
         headers: {
           "Proxy-Authorization": `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
@@ -26,16 +25,13 @@ class LinkedInAuthManager {
       });
 
       const response = await fetch("https://www.linkedin.com/login", { dispatcher: proxyAgent });
-
       if (!response.ok) {
         throw new Error(`Proxy test failed with status ${response.status}`);
       }
 
-      console.log("[INFO] Proxy successfully accessed LinkedIn login page.");
-
-      // Launch Puppeteer with proxy
+      // Launch Puppeteer
       const browser = await puppeteer.launch({
-        headless: true,
+        headless: false, // Debug mode
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -48,8 +44,20 @@ class LinkedInAuthManager {
       // Configure Proxy Authentication
       await page.authenticate({ username, password });
 
+      // Set User-Agent
+      await page.setUserAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+      );
+
       // Navigate to LinkedIn login page
-      await page.goto("https://www.linkedin.com/login", { waitUntil: "domcontentloaded" });
+      try {
+        await page.goto("https://www.linkedin.com/login", { waitUntil: "networkidle2", timeout: 120000 });
+        console.log("[INFO] Successfully accessed LinkedIn login page.");
+      } catch (error) {
+        console.error("[ERROR] Navigation timeout or error occurred. Capturing screenshot...");
+        await page.screenshot({ path: "login_timeout.png" });
+        throw error;
+      }
 
       // Perform login
       await page.type("#username", linkedinUsername);
@@ -57,12 +65,7 @@ class LinkedInAuthManager {
       await page.click("button[type=submit]");
 
       // Wait for successful login
-      try {
-        await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 });
-        console.log("[INFO] Successfully logged in to LinkedIn.");
-      } catch (error) {
-        throw new Error("Login navigation timeout or error occurred.");
-      }
+      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 120000 });
 
       // Extract cookie li_at
       const cookies = await page.cookies();
