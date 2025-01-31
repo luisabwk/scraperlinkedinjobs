@@ -37,7 +37,7 @@ async function ensureBrowser(req, res, next) {
 }
 
 // Endpoints
-app.post("/api/auth", ensureBrowser, async (req, res) => {
+app.post("/auth", ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
   try {
     const authManager = new LinkedInAuthManager();
@@ -51,7 +51,7 @@ app.post("/api/auth", ensureBrowser, async (req, res) => {
   }
 });
 
-app.post("/api/scrape-jobs", ensureBrowser, async (req, res) => {
+app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
   const { searchTerm, location, li_at, maxJobs } = req.body;
   try {
     const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
@@ -62,7 +62,7 @@ app.post("/api/scrape-jobs", ensureBrowser, async (req, res) => {
   }
 });
 
-app.post("/api/job-details", ensureBrowser, async (req, res) => {
+app.post("/job-details", ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
   try {
     const details = await getJobDetails(browser, jobUrl, li_at);
