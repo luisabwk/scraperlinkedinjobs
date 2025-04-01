@@ -12,9 +12,10 @@ class LinkedInAuthManager {
     emailPort,
     captchaApiKey
   ) {
-    const proxyUrl = "http://geo.iproyal.com:12321";
-    const username = "d4Xzafgb5TJfSLpI";
-    const password = "YQhSnyw789HDtj4u_country-br_city-curitiba_streaming-1";
+    // Atualizado para usar IP fixo
+    const proxyUrl = "http://200.239.202.184:12323";
+    const username = "14a9d5cd342c4";
+    const password = "3fec672401";
 
     try {
       console.log("[INFO] Testing proxy with LinkedIn login page...");
