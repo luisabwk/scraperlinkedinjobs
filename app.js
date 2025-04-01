@@ -9,6 +9,12 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Configuração de timeout maior para requisições
+app.use((req, res, next) => {
+  res.setTimeout(300000); // 5 minutos de timeout para todas as requisições
+  next();
+});
+
 // Single browser instance
 let browser;
 
@@ -35,6 +41,11 @@ async function ensureBrowser(req, res, next) {
     res.status(500).json({ error: "Failed to initialize browser", details: error.message });
   }
 }
+
+// Status endpoint
+app.get("/status", (req, res) => {
+  res.status(200).json({ status: "online", message: "API is running" });
+});
 
 // Endpoints
 app.post("/auth", ensureBrowser, async (req, res) => {
@@ -73,7 +84,7 @@ app.post("/job-details", ensureBrowser, async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`[INFO] Server running on port ${PORT}`);
 });
