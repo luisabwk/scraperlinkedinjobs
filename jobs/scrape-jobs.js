@@ -1,4 +1,5 @@
 const puppeteer = require("puppeteer");
+require('dotenv').config();
 
 async function waitForNetworkIdle(page, timeout = 10000, maxInflightRequests = 0) {
   try {
@@ -27,6 +28,15 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs) {
 
   try {
     page = await browser.newPage();
+    
+    // Configurar proxy se estiver definido nas variáveis de ambiente
+    if (process.env.PROXY_URL && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+      await page.authenticate({
+        username: process.env.PROXY_USERNAME,
+        password: process.env.PROXY_PASSWORD
+      });
+    }
+    
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
