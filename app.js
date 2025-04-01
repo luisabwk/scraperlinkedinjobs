@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
 const puppeteerExtra = require("puppeteer-extra");
@@ -44,7 +45,12 @@ async function ensureBrowser(req, res, next) {
 
 // Status endpoint
 app.get("/status", (req, res) => {
-  res.status(200).json({ status: "online", message: "API is running" });
+  res.status(200).json({ 
+    status: "online", 
+    message: "API is running",
+    environment: process.env.NODE_ENV,
+    proxyConfigured: !!process.env.PROXY_URL
+  });
 });
 
 // Endpoints
@@ -87,4 +93,6 @@ app.post("/job-details", ensureBrowser, async (req, res) => {
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`[INFO] Server running on port ${PORT}`);
+  console.log(`[INFO] Environment: ${process.env.NODE_ENV}`);
+  console.log(`[INFO] Proxy configured: ${!!process.env.PROXY_URL}`);
 });
