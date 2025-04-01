@@ -1,4 +1,6 @@
-require('dotenv').config();
+// Carregando variáveis de ambiente no início
+require('dotenv').config({ path: __dirname + '/.env' });
+
 const express = require("express");
 const cors = require("cors");
 const puppeteerExtra = require("puppeteer-extra");
@@ -43,7 +45,7 @@ async function ensureBrowser(req, res, next) {
   }
 }
 
-// Status endpoint
+// Status endpoint - Rota original
 app.get("/status", (req, res) => {
   res.status(200).json({ 
     status: "online", 
@@ -53,7 +55,17 @@ app.get("/status", (req, res) => {
   });
 });
 
-// Endpoints
+// Status endpoint - Com prefixo /jobs
+app.get("/jobs/status", (req, res) => {
+  res.status(200).json({ 
+    status: "online", 
+    message: "API is running",
+    environment: process.env.NODE_ENV,
+    proxyConfigured: !!process.env.PROXY_URL
+  });
+});
+
+// Auth endpoint - Rota original
 app.post("/auth", ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
   try {
@@ -68,6 +80,22 @@ app.post("/auth", ensureBrowser, async (req, res) => {
   }
 });
 
+// Auth endpoint - Com prefixo /jobs
+app.post("/jobs/auth", ensureBrowser, async (req, res) => {
+  const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
+  try {
+    const authManager = new LinkedInAuthManager();
+    const li_at = await authManager.loginWithVerificationAndCaptcha(
+      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey
+    );
+    res.status(200).json({ message: "Authentication successful", li_at });
+  } catch (error) {
+    console.error("[ERROR] Authentication failed:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Scrape jobs endpoint - Rota original
 app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
   const { searchTerm, location, li_at, maxJobs } = req.body;
   try {
@@ -79,7 +107,32 @@ app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
   }
 });
 
+// Scrape jobs endpoint - Com prefixo /jobs
+app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
+  const { searchTerm, location, li_at, maxJobs } = req.body;
+  try {
+    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
+    res.status(200).json(results);
+  } catch (error) {
+    console.error("[ERROR] Failed to scrape jobs:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Job details endpoint - Rota original
 app.post("/job-details", ensureBrowser, async (req, res) => {
+  const { jobUrl, li_at } = req.body;
+  try {
+    const details = await getJobDetails(browser, jobUrl, li_at);
+    res.status(200).json(details);
+  } catch (error) {
+    console.error("[ERROR] Failed to fetch job details:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Job details endpoint - Com prefixo /jobs
+app.post("/jobs/job-details", ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
   try {
     const details = await getJobDetails(browser, jobUrl, li_at);
