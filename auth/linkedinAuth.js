@@ -1,6 +1,7 @@
 const puppeteer = require("puppeteer");
 const { ProxyAgent } = require("undici");
 const fetch = require("node-fetch");
+require('dotenv').config();
 
 class LinkedInAuthManager {
   async loginWithVerificationAndCaptcha(
@@ -12,10 +13,10 @@ class LinkedInAuthManager {
     emailPort,
     captchaApiKey
   ) {
-    // Atualizado para usar IP fixo
-    const proxyUrl = "http://200.239.202.184:12323";
-    const username = "14a9d5cd342c4";
-    const password = "3fec672401";
+    // Usando variáveis de ambiente para as credenciais do proxy
+    const proxyUrl = process.env.PROXY_URL;
+    const username = process.env.PROXY_USERNAME;
+    const password = process.env.PROXY_PASSWORD;
 
     try {
       console.log("[INFO] Testing proxy with LinkedIn login page...");
