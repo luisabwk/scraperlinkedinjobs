@@ -59,7 +59,7 @@ async function ensureBrowser(req, res, next) {
   }
 }
 
-// Status endpoint - Rota original
+// API Endpoints - Versão com prefixo /jobs (recomendado para manter consistência)
 app.get("/jobs/status", (req, res) => {
   res.status(200).json({ 
     status: "online", 
@@ -69,17 +69,6 @@ app.get("/jobs/status", (req, res) => {
   });
 });
 
-// Status endpoint - Com prefixo /jobs
-app.get("/jobs/status", (req, res) => {
-  res.status(200).json({ 
-    status: "online", 
-    message: "API is running",
-    environment: process.env.NODE_ENV,
-    proxyConfigured: !!process.env.PROXY_HOST && !!process.env.PROXY_PORT
-  });
-});
-
-// Auth endpoint - Rota original
 app.post("/jobs/auth", ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
   try {
@@ -94,22 +83,6 @@ app.post("/jobs/auth", ensureBrowser, async (req, res) => {
   }
 });
 
-// Auth endpoint - Com prefixo /jobs
-app.post("/jobs/auth", ensureBrowser, async (req, res) => {
-  const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
-  try {
-    const authManager = new LinkedInAuthManager();
-    const li_at = await authManager.loginWithVerificationAndCaptcha(
-      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey
-    );
-    res.status(200).json({ message: "Authentication successful", li_at });
-  } catch (error) {
-    console.error("[ERROR] Authentication failed:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Scrape jobs endpoint - Rota original
 app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
   const { searchTerm, location, li_at, maxJobs } = req.body;
   try {
@@ -121,19 +94,6 @@ app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
   }
 });
 
-// Scrape jobs endpoint - Com prefixo /jobs
-app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
-  const { searchTerm, location, li_at, maxJobs } = req.body;
-  try {
-    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
-    res.status(200).json(results);
-  } catch (error) {
-    console.error("[ERROR] Failed to scrape jobs:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Job details endpoint - Rota original
 app.post("/jobs/job-details", ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
   try {
@@ -145,8 +105,42 @@ app.post("/jobs/job-details", ensureBrowser, async (req, res) => {
   }
 });
 
-// Job details endpoint - Com prefixo /jobs
-app.post("/jobs/job-details", ensureBrowser, async (req, res) => {
+// API Endpoints - Versão sem prefixo (para compatibilidade, se necessário)
+app.get("/status", (req, res) => {
+  res.status(200).json({ 
+    status: "online", 
+    message: "API is running",
+    environment: process.env.NODE_ENV,
+    proxyConfigured: !!process.env.PROXY_HOST && !!process.env.PROXY_PORT
+  });
+});
+
+app.post("/auth", ensureBrowser, async (req, res) => {
+  const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
+  try {
+    const authManager = new LinkedInAuthManager();
+    const li_at = await authManager.loginWithVerificationAndCaptcha(
+      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey
+    );
+    res.status(200).json({ message: "Authentication successful", li_at });
+  } catch (error) {
+    console.error("[ERROR] Authentication failed:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
+  const { searchTerm, location, li_at, maxJobs } = req.body;
+  try {
+    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
+    res.status(200).json(results);
+  } catch (error) {
+    console.error("[ERROR] Failed to scrape jobs:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/job-details", ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
   try {
     const details = await getJobDetails(browser, jobUrl, li_at);
