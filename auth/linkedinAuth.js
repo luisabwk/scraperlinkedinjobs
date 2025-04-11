@@ -168,19 +168,76 @@ class LinkedInAuthManager {
       // Verificar possíveis desafios de segurança ou verificação
       const challengeSelectors = [
         { selector: "#captcha-challenge", description: "CAPTCHA challenge" },
+        { selector: "iframe[title*='reCAPTCHA']", description: "reCAPTCHA" },
+        { selector: "iframe[src*='recaptcha']", description: "reCAPTCHA iframe" },
         { selector: "#input__email_verification_pin", description: "Email verification" },
         { selector: ".secondary-action", description: "Security verification" },
-        { selector: ".recaptcha-checkbox-border", description: "reCAPTCHA checkbox" }
+        { selector: ".recaptcha-checkbox-border", description: "reCAPTCHA checkbox" },
+        { selector: ".challenge-dialog", description: "Security challenge" }
       ];
       
+      let foundChallenge = false;
+      let challengeType = null;
+      
       for (const { selector, description } of challengeSelectors) {
-        const hasChallenge = await page.$(selector) !== null;
-        if (hasChallenge) {
+        const element = await page.$(selector);
+        if (element) {
           console.log(`[INFO] Detected ${description}`);
+          foundChallenge = true;
+          challengeType = description;
+          
           // Captura uma screenshot para diagnóstico
           await page.screenshot({ path: `challenge_${description.replace(/\s+/g, '_')}.png` });
-          // Se for um captcha ou verificação de email, poderíamos implementar solução aqui
+          break;
         }
+      }
+      
+      // Se encontramos um CAPTCHA e temos uma API key, tentar resolver
+      if (foundChallenge && captchaApiKey) {
+        console.log(`[INFO] Attempting to solve ${challengeType} using 2Captcha API`);
+        
+        let solved = false;
+        
+        // Tente resolver o reCAPTCHA se detectado
+        if (challengeType && (challengeType.includes("reCAPTCHA") || challengeType.includes("CAPTCHA"))) {
+          solved = await this.solveRecaptcha(page, captchaApiKey);
+        }
+        
+        // Verificar checkpoint de segurança específico do LinkedIn
+        const isCheckpointPage = page.url().includes("checkpoint/challenge");
+        if (isCheckpointPage) {
+          console.log("[INFO] Detected LinkedIn security checkpoint page");
+          
+          // Verificar se tem um botão de "verify" ou similar para clicar
+          const verifyButtonSelectors = [
+            'button[data-control-name="submit"]',
+            'button[type="submit"]',
+            'button.artdeco-button--primary'
+          ];
+          
+          for (const buttonSelector of verifyButtonSelectors) {
+            const verifyButton = await page.$(buttonSelector);
+            if (verifyButton) {
+              console.log(`[INFO] Found verify button with selector: ${buttonSelector}`);
+              await verifyButton.click();
+              await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {});
+              break;
+            }
+          }
+          
+          // Esperar um pouco para ver se conseguimos passar pelo checkpoint
+          await new Promise(r => setTimeout(r, 5000));
+        }
+        
+        if (!solved && isCheckpointPage) {
+          console.warn("[WARN] Could not automatically solve the security challenge");
+          await page.screenshot({ path: "challenge_unsolved.png" });
+          throw new Error(`LinkedIn security challenge detected but could not be solved automatically. Manual verification required.`);
+        }
+      } else if (foundChallenge) {
+        console.warn("[WARN] Security challenge detected but no 2Captcha API key provided");
+        await page.screenshot({ path: "challenge_no_api_key.png" });
+        throw new Error(`LinkedIn security challenge detected. Manual verification required or provide a valid 2Captcha API key.`);
       }
       
       // Novas estratégias para verificar o login bem-sucedido:
@@ -224,7 +281,7 @@ class LinkedInAuthManager {
       
       // Estratégia 3: Verificar pelo cookie li_at
       const cookies = await page.cookies();
-      const li_at = cookies.find((cookie) => cookie.name === "li_at")?.value;
+      let li_at = cookies.find((cookie) => cookie.name === "li_at")?.value;
       
       if (li_at) {
         console.log("[INFO] Found li_at cookie - this suggests successful authentication");
@@ -271,6 +328,176 @@ class LinkedInAuthManager {
     } catch (error) {
       console.error("[ERROR] LinkedIn login failed:", error);
       throw error;
+    }
+  }
+  
+  // Método para resolver reCAPTCHA usando a API do 2Captcha
+  async solveRecaptcha(page, apiKey) {
+    try {
+      console.log("[INFO] Starting reCAPTCHA solving process with 2Captcha");
+      
+      // Verificar se existe um iframe do reCAPTCHA
+      const recaptchaIframe = await page.$("iframe[src*='recaptcha']");
+      if (!recaptchaIframe) {
+        console.warn("[WARN] No reCAPTCHA iframe found on the page");
+        return false;
+      }
+      
+      // Obter o sitekey do reCAPTCHA
+      const sitekey = await page.evaluate(() => {
+        // Tentar encontrar o sitekey nos atributos data do iframe
+        const iframe = document.querySelector("iframe[src*='recaptcha']");
+        if (iframe) {
+          const src = iframe.getAttribute("src");
+          const sitekeyMatch = src.match(/[?&]k=([^&]+)/);
+          return sitekeyMatch ? sitekeyMatch[1] : null;
+        }
+        
+        // Tentar encontrar nos atributos data da div
+        const divs = Array.from(document.querySelectorAll("div[data-sitekey]"));
+        return divs.length > 0 ? divs[0].getAttribute("data-sitekey") : null;
+      });
+      
+      if (!sitekey) {
+        console.warn("[WARN] Could not extract reCAPTCHA sitekey");
+        return false;
+      }
+      
+      console.log(`[INFO] Found reCAPTCHA sitekey: ${sitekey}`);
+      
+      // Obter a URL atual para o domínio
+      const pageUrl = page.url();
+      
+      // Enviar solicitação para o 2Captcha
+      console.log("[INFO] Sending reCAPTCHA solving request to 2Captcha");
+      const captchaResponse = await fetch(`https://2captcha.com/in.php?key=${apiKey}&method=userrecaptcha&googlekey=${sitekey}&pageurl=${encodeURIComponent(pageUrl)}&json=1`);
+      const captchaData = await captchaResponse.json();
+      
+      if (!captchaData.status || captchaData.status !== 1) {
+        console.error(`[ERROR] 2Captcha error: ${captchaData.error}`);
+        return false;
+      }
+      
+      const captchaId = captchaData.request;
+      console.log(`[INFO] reCAPTCHA task submitted, ID: ${captchaId}`);
+      
+      // Esperar pela solução (polling)
+      let solution = null;
+      let attempts = 0;
+      const maxAttempts = 30; // 30 tentativas com 5 segundos entre = até 2.5 minutos de espera
+      
+      while (!solution && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Esperar 5 segundos entre tentativas
+        attempts++;
+        
+        console.log(`[INFO] Checking reCAPTCHA solution (attempt ${attempts}/${maxAttempts})...`);
+        const resultResponse = await fetch(`https://2captcha.com/res.php?key=${apiKey}&action=get&id=${captchaId}&json=1`);
+        const resultData = await resultResponse.json();
+        
+        if (resultData.status === 1) {
+          solution = resultData.request;
+          break;
+        } else if (resultData.request !== "CAPCHA_NOT_READY") {
+          console.error(`[ERROR] 2Captcha error: ${resultData.request}`);
+          return false;
+        }
+      }
+      
+      if (!solution) {
+        console.error("[ERROR] Failed to get reCAPTCHA solution after maximum attempts");
+        return false;
+      }
+      
+      console.log("[INFO] reCAPTCHA solution received, applying to the page");
+      
+      // Aplicar a solução do reCAPTCHA na página
+      const success = await page.evaluate((recaptchaSolution) => {
+        // Verificar se existe a função de callback do reCAPTCHA
+        if (typeof window.___grecaptcha_cfg !== 'undefined') {
+          window.___grecaptcha_cfg.clients[0].Y.Y.callback(recaptchaSolution);
+          return true;
+        }
+        
+        // Tentar inserir diretamente num campo textarea do reCAPTCHA
+        const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+        if (textarea) {
+          textarea.value = recaptchaSolution;
+          return true;
+        }
+        
+        return false;
+      }, solution);
+      
+      if (!success) {
+        console.warn("[WARN] Could not apply reCAPTCHA solution directly");
+        
+        // Tentar injetar o código que define g-recaptcha-response
+        await page.evaluate((recaptchaSolution) => {
+          // Criar um elemento de script para injetar o código
+          const script = document.createElement('script');
+          script.textContent = `
+            document.querySelector('textarea#g-recaptcha-response') ? 
+              document.querySelector('textarea#g-recaptcha-response').value = "${recaptchaSolution}" : 
+              document.querySelector('textarea[name="g-recaptcha-response"]').value = "${recaptchaSolution}";
+            
+            // Tentar chamar o callback manualmente se existir
+            if (window.___grecaptcha_cfg) {
+              const callbacks = Object.keys(window.___grecaptcha_cfg.clients)
+                .map(key => Object.values(window.___grecaptcha_cfg.clients[key])[1])
+                .filter(Boolean)
+                .map(token => Object.values(token)[0])
+                .filter(Boolean)
+                .map(v => Object.entries(v))
+                .flat()
+                .filter(([k]) => k === 'callback')
+                .map(([_, v]) => v)
+                .filter(Boolean);
+              
+              callbacks.forEach(cb => {
+                try { cb("${recaptchaSolution}"); } catch(e) { console.error(e); }
+              });
+            }
+          `;
+          document.body.appendChild(script);
+        }, solution);
+      }
+      
+      // Verificar se existe um botão de verificação para clicar após resolver o captcha
+      const verifyButtonSelectors = [
+        '#recaptcha-verify-button',
+        'button[type="submit"]',
+        'button.artdeco-button--primary',
+        'button[data-control-name="submit"]',
+        '.recaptcha-submit'
+      ];
+      
+      for (const buttonSelector of verifyButtonSelectors) {
+        const verifyButton = await page.$(buttonSelector);
+        if (verifyButton) {
+          console.log(`[INFO] Clicking verify button with selector: ${buttonSelector}`);
+          await verifyButton.click();
+          await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {});
+          break;
+        }
+      }
+      
+      // Esperar um pouco para ver se a página avança
+      await new Promise(r => setTimeout(r, 5000));
+      
+      // Verificar se ainda estamos na página de desafio
+      const currentUrl = page.url();
+      const stillInChallenge = currentUrl.includes("checkpoint") || currentUrl.includes("challenge");
+      
+      if (stillInChallenge) {
+        console.warn("[WARN] Still on challenge page after reCAPTCHA solving attempt");
+        return false;
+      }
+      
+      console.log("[INFO] Successfully solved reCAPTCHA challenge");
+      return true;
+    } catch (error) {
+      console.error("[ERROR] Error solving reCAPTCHA:", error.message);
+      return false;
     }
   }
 }
