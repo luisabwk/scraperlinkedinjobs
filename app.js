@@ -12,6 +12,12 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Middleware de log para depuração
+app.use((req, res, next) => {
+  console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Configuração de timeout maior para requisições
 app.use((req, res, next) => {
   res.setTimeout(300000); // 5 minutos de timeout para todas as requisições
@@ -59,8 +65,11 @@ async function ensureBrowser(req, res, next) {
   }
 }
 
-// API Endpoints - Versão com prefixo /jobs (recomendado para manter consistência)
-app.get("/jobs/status", (req, res) => {
+// Criar um router Express para as rotas da API
+const router = express.Router();
+
+// Status endpoint
+router.get("/status", (req, res) => {
   res.status(200).json({ 
     status: "online", 
     message: "API is running",
@@ -69,7 +78,8 @@ app.get("/jobs/status", (req, res) => {
   });
 });
 
-app.post("/jobs/auth", ensureBrowser, async (req, res) => {
+// Auth endpoint
+router.post("/auth", ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
   try {
     const authManager = new LinkedInAuthManager();
@@ -83,7 +93,8 @@ app.post("/jobs/auth", ensureBrowser, async (req, res) => {
   }
 });
 
-app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
+// Scrape jobs endpoint
+router.post("/scrape-jobs", ensureBrowser, async (req, res) => {
   const { searchTerm, location, li_at, maxJobs } = req.body;
   try {
     const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
@@ -94,7 +105,8 @@ app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
   }
 });
 
-app.post("/jobs/job-details", ensureBrowser, async (req, res) => {
+// Job details endpoint
+router.post("/job-details", ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
   try {
     const details = await getJobDetails(browser, jobUrl, li_at);
@@ -105,54 +117,21 @@ app.post("/jobs/job-details", ensureBrowser, async (req, res) => {
   }
 });
 
-// API Endpoints - Versão sem prefixo (para compatibilidade, se necessário)
-app.get("/status", (req, res) => {
-  res.status(200).json({ 
-    status: "online", 
-    message: "API is running",
-    environment: process.env.NODE_ENV,
-    proxyConfigured: !!process.env.PROXY_HOST && !!process.env.PROXY_PORT
-  });
-});
+// Montar o router duas vezes:
+// 1. Na raiz para suportar requisições sem prefixo
+app.use('/', router);
 
-app.post("/auth", ensureBrowser, async (req, res) => {
-  const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
-  try {
-    const authManager = new LinkedInAuthManager();
-    const li_at = await authManager.loginWithVerificationAndCaptcha(
-      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey
-    );
-    res.status(200).json({ message: "Authentication successful", li_at });
-  } catch (error) {
-    console.error("[ERROR] Authentication failed:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
+// 2. No prefixo /jobs para suportar requisições com o prefixo
+app.use('/jobs', router);
 
-app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
-  const { searchTerm, location, li_at, maxJobs } = req.body;
-  try {
-    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
-    res.status(200).json(results);
-  } catch (error) {
-    console.error("[ERROR] Failed to scrape jobs:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post("/job-details", ensureBrowser, async (req, res) => {
-  const { jobUrl, li_at } = req.body;
-  try {
-    const details = await getJobDetails(browser, jobUrl, li_at);
-    res.status(200).json(details);
-  } catch (error) {
-    console.error("[ERROR] Failed to fetch job details:", error.message);
-    res.status(500).json({ error: error.message });
-  }
+// Rota de catchall para depuração de URLs não encontradas
+app.use('*', (req, res) => {
+  console.log(`[ERROR] Rota não encontrada: ${req.method} ${req.originalUrl}`);
+  res.status(404).send(`Rota não encontrada: ${req.method} ${req.originalUrl}. Verifique o caminho da URL.`);
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => { // Listen em todas as interfaces de rede
   console.log(`[INFO] Server running on port ${PORT}`);
   console.log(`[INFO] Environment: ${process.env.NODE_ENV}`);
   console.log(`[INFO] Proxy configured: ${!!process.env.PROXY_HOST && !!process.env.PROXY_PORT}`);
