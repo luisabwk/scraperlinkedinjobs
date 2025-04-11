@@ -225,6 +225,24 @@ class LinkedInAuthManager {
             if (pageContent.includes("captcha") || pageContent.includes("CAPTCHA")) {
               console.log("[INFO] Found captcha reference in page content");
               solved = await this.solveRecaptchaV2WithNewAPI(page, captchaApiKey);
+            } else {
+              // Nova verificação para buscar padrões específicos de reCAPTCHA no código HTML
+              const recaptchaPatterns = [
+                "g-recaptcha",
+                "grecaptcha.execute",
+                "grecaptcha.render",
+                "recaptcha_challenge",
+                "recaptcha-token",
+                "data-sitekey"
+              ];
+              
+              for (const pattern of recaptchaPatterns) {
+                if (pageContent.includes(pattern)) {
+                  console.log(`[INFO] Detected reCAPTCHA pattern: ${pattern}`);
+                  solved = await this.solveRecaptchaV2WithNewAPI(page, captchaApiKey);
+                  break;
+                }
+              }
             }
           }
           
@@ -382,7 +400,7 @@ class LinkedInAuthManager {
         const pageContent = await page.content();
         
         // Log do conteúdo relevante para depuração
-        const captchaSnippets = pageContent.match(/(recaptcha|sitekey|grecaptcha).{0,50}/gi);
+        const captchaSnippets = pageContent.match(/(recaptcha|sitekey|grecaptcha).{0,100}/gi);
         if (captchaSnippets && captchaSnippets.length > 0) {
           console.log(`[INFO] Found ${captchaSnippets.length} captcha-related snippets in page content`);
           captchaSnippets.slice(0, 5).forEach(snippet => {
@@ -390,14 +408,30 @@ class LinkedInAuthManager {
           });
         }
         
+        // Tentar extrair qualquer string que se pareça com um sitekey
+        const sitekeyRegex = /\b(6L[a-zA-Z0-9_-]{38,40})\b/g;
+        const potentialSitekeys = [];
+        let match;
+        
+        while ((match = sitekeyRegex.exec(pageContent)) !== null) {
+          potentialSitekeys.push(match[1]);
+        }
+        
+        if (potentialSitekeys.length > 0) {
+          console.log(`[INFO] Found potential sitekeys in HTML: ${potentialSitekeys.join(', ')}`);
+          sitekey = potentialSitekeys[0];
+        }
+        
         // Tentar diferentes padrões regex para encontrar o sitekey
         const sitekeyPatterns = [
-          /['"](6L[a-zA-Z0-9_-]{38})['"]/,                  // Formato padrão de sitekey
-          /sitekey['"]?\s*[:=]\s*['"]([^'"]+)['"]/,         // sitekey: "KEY" ou sitekey="KEY"
-          /data-sitekey=['"]([^'"]+)['"]/,                  // data-sitekey="KEY"
-          /grecaptcha\.render\([^,]+,\s*\{[^}]*['"]sitekey['"]\s*:\s*['"]([^'"]+)['"]/,    // grecaptcha.render
-          /k=([a-zA-Z0-9_-]{40})/,                          // k=KEY em URLs
-          /reCAPTCHA[^>]+sitekey=([a-zA-Z0-9_-]{40})/       // Parâmetro em texto
+          /['"](6L[a-zA-Z0-9_-]{38,40})['"]/,                 // Formato padrão de sitekey
+          /sitekey['"]?\s*[:=]\s*['"]([^'"]+)['"]/,           // sitekey: "KEY" ou sitekey="KEY"
+          /data-sitekey=['"]([^'"]+)['"]/,                    // data-sitekey="KEY"
+          /grecaptcha\.render\([^,]+,\s*\{[^}]*['"]sitekey['"]\s*:\s*['"]([^'"]+)['"]/,  // grecaptcha.render
+          /k=([a-zA-Z0-9_-]{40})/,                            // k=KEY em URLs
+          /reCAPTCHA[^>]+sitekey=([a-zA-Z0-9_-]{40})/,        // Parâmetro em texto
+          /"sitekey"\s*:\s*"([^"]+)"/,                        // JSON format: "sitekey": "VALUE"
+          /'sitekey'\s*:\s*'([^']+)'/                         // JSON format: 'sitekey': 'VALUE'
         ];
         
         for (const pattern of sitekeyPatterns) {
@@ -447,10 +481,27 @@ class LinkedInAuthManager {
           if (hasLinkedinChallenge) {
             console.log("[INFO] LinkedIn challenge detected but appears to be a non-standard reCAPTCHA");
             
-            // Tente usar um sitekey genérico para o LinkedIn
-            // Nota: Este é um exemplo e deve ser substituído pelo sitekey real do LinkedIn
-            sitekey = "6LfCVLAUAAAAAMfHXD6LNPSboAs0qWvwE9pLF9Y6";
-            console.log("[INFO] Using LinkedIn-specific sitekey for challenge");
+            // Definir sitekeys conhecidos do LinkedIn
+            const linkedinSitekeys = [
+              "6LfCVLAUAAAAAMfHXD6LNPSboAs0qWvwE9pLF9Y6", // Sitekey conhecido para LinkedIn
+              "6Lc7Oa4UAAAAAEt8K9lCI7ucTOStB6ZJ5of6mU6M", // Sitekey alternativo para LinkedIn
+              "6LeZmb0UAAAAAGt0cEvY41up9CsV2cqAq1k1gX-X"  // Outro sitekey reportado
+            ];
+            
+            // Procurar referências diretas a estes sitekeys no conteúdo da página
+            for (const knownKey of linkedinSitekeys) {
+              if (pageContent.includes(knownKey)) {
+                sitekey = knownKey;
+                console.log(`[INFO] Found known LinkedIn sitekey: ${sitekey}`);
+                break;
+              }
+            }
+            
+            // Se não encontrou nenhum sitekey conhecido na página, use o primeiro como padrão
+            if (!sitekey) {
+              sitekey = linkedinSitekeys[0];
+              console.log(`[INFO] Using default LinkedIn sitekey: ${sitekey}`);
+            }
           }
         }
       }
@@ -628,13 +679,69 @@ class LinkedInAuthManager {
         'input[type="submit"]'
       ];
       
+      let verifyButtonFound = false;
+      
       for (const buttonSelector of verifyButtonSelectors) {
         const verifyButton = await page.$(buttonSelector);
         if (verifyButton) {
           console.log(`[INFO] Clicking verify button with selector: ${buttonSelector}`);
           await verifyButton.click();
+          verifyButtonFound = true;
           await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {});
           break;
+        }
+      }
+      
+      // Se não encontrou botão de verificação, tente enviar o formulário diretamente
+      if (!verifyButtonFound) {
+        console.log("[INFO] No verify button found, attempting to submit the form directly");
+        
+        const formSubmitResult = await page.evaluate((recaptchaSolution) => {
+          // Preencher todos os campos de g-recaptcha-response
+          const recaptchaResponseFields = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
+          if (recaptchaResponseFields.length) {
+            recaptchaResponseFields.forEach(field => field.value = recaptchaSolution);
+          }
+          
+          // Tentar encontrar e enviar qualquer formulário na página
+          const forms = document.querySelectorAll('form');
+          if (forms.length) {
+            for (const form of forms) {
+              try {
+                console.log(`Submitting form: ${form.id || form.name || 'unnamed form'}`);
+                form.submit();
+                return true;
+              } catch (e) {
+                console.error(`Error submitting form: ${e.message}`);
+              }
+            }
+          }
+          
+          // Verificar se há algum botão que parece ser de submissão
+          const possibleSubmitButtons = Array.from(document.querySelectorAll('button, input[type="submit"]'))
+            .filter(el => {
+              const text = el.textContent.toLowerCase();
+              return text.includes('verify') || 
+                     text.includes('submit') || 
+                     text.includes('continue') || 
+                     text.includes('next') ||
+                     text.includes('confirmar') ||
+                     text.includes('verificar') ||
+                     text.includes('continuar') ||
+                     text.includes('avançar');
+            });
+          
+          if (possibleSubmitButtons.length) {
+            possibleSubmitButtons[0].click();
+            return true;
+          }
+          
+          return false;
+        }, solution);
+        
+        if (formSubmitResult) {
+          console.log("[INFO] Form submitted via JavaScript");
+          await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {});
         }
       }
       
@@ -644,6 +751,46 @@ class LinkedInAuthManager {
       // Verificar se ainda estamos na página de desafio
       const currentUrl = page.url();
       const stillInChallenge = currentUrl.includes("checkpoint") || currentUrl.includes("challenge");
+      
+      // Verificar elementos na página que indicam falha ou sucesso
+      const captchaStatus = await page.evaluate(() => {
+        // Verificar mensagens de erro específicas
+        const errorMessages = Array.from(document.querySelectorAll('.error, .error-message, .captcha-error'))
+          .map(el => el.innerText)
+          .filter(text => text.length > 0);
+          
+        if (errorMessages.length > 0) {
+          return {success: false, errors: errorMessages};
+        }
+        
+        // Verificar se a página contém mensagens de sucesso
+        const pageText = document.body.innerText.toLowerCase();
+        const successIndicators = [
+          "verification successful",
+          "verificação bem-sucedida",
+          "thank you for verifying",
+          "obrigado por verificar",
+          "you're all set",
+          "tudo pronto"
+        ];
+        
+        for (const indicator of successIndicators) {
+          if (pageText.includes(indicator)) {
+            return {success: true, message: indicator};
+          }
+        }
+        
+        // Retornar status neutro se não encontrar indicadores claros
+        return {success: null};
+      });
+      
+      if (captchaStatus.success === false) {
+        console.warn(`[WARN] CAPTCHA error detected: ${captchaStatus.errors?.join(', ')}`);
+        return false;
+      } else if (captchaStatus.success === true) {
+        console.log(`[INFO] CAPTCHA success confirmed: ${captchaStatus.message}`);
+        return true;
+      }
       
       if (stillInChallenge) {
         console.warn("[WARN] Still on challenge page after reCAPTCHA solving attempt");
