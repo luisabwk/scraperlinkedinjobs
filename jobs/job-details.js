@@ -9,12 +9,18 @@ async function getJobDetails(browser, jobUrl, li_at) {
   try {
     page = await browser.newPage();
     
-    // Configurar proxy se estiver definido nas variáveis de ambiente
-    if (process.env.PROXY_URL && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+    // Configurar proxy rotativo do IPRoyal
+    const proxyUsername = process.env.PROXY_USERNAME;
+    const proxyPassword = process.env.PROXY_PASSWORD;
+    
+    if (proxyUsername && proxyPassword) {
+      console.log("[INFO] Configurando proxy rotativo do IPRoyal...");
       await page.authenticate({
-        username: process.env.PROXY_USERNAME,
-        password: process.env.PROXY_PASSWORD
+        username: proxyUsername,
+        password: proxyPassword
       });
+    } else {
+      console.warn("[WARN] Credenciais de proxy não encontradas nas variáveis de ambiente.");
     }
     
     await page.setViewport({ width: 1920, height: 1080 });

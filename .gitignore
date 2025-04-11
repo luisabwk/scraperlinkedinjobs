@@ -1,0 +1,73 @@
+# Dependências
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Arquivos de ambiente e configuração
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Arquivos de logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diretórios de cache
+.npm/
+.eslintcache
+.cache/
+.parcel-cache/
+
+# Arquivos de saída e build
+dist/
+build/
+coverage/
+
+# Arquivos temporários
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arquivos específicos do projeto
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+login_failed.png
+screenshots/
+
+# Backups
+backup*/
+*_backup/
+*.bak
+
+# Dados sensíveis
+credentials.json
+secrets.json
+auth.json
+
+# Arquivos do editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/

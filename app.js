@@ -26,6 +26,11 @@ async function ensureBrowser(req, res, next) {
   try {
     if (!browser || !browser.isConnected()) {
       console.log("[INFO] Initializing browser...");
+      
+      // Configurando o proxy rotativo do IPRoyal
+      const proxyUrl = `http://${process.env.PROXY_HOST}:${process.env.PROXY_PORT}`;
+      console.log(`[INFO] Using proxy: ${proxyUrl}`);
+      
       browser = await puppeteerExtra.launch({
         headless: true,
         args: [
@@ -35,8 +40,17 @@ async function ensureBrowser(req, res, next) {
           "--disable-gpu",
           "--no-zygote",
           "--single-process",
+          `--proxy-server=${proxyUrl}`
         ],
       });
+      
+      // Verificar se o browser foi inicializado corretamente
+      if (!browser) {
+        throw new Error("Failed to create browser instance");
+      }
+      
+      // Log de confirmação
+      console.log("[INFO] Browser initialized successfully with proxy configuration");
     }
     next();
   } catch (error) {
@@ -51,7 +65,7 @@ app.get("/status", (req, res) => {
     status: "online", 
     message: "API is running",
     environment: process.env.NODE_ENV,
-    proxyConfigured: !!process.env.PROXY_URL
+    proxyConfigured: !!process.env.PROXY_HOST && !!process.env.PROXY_PORT
   });
 });
 
@@ -61,7 +75,7 @@ app.get("/jobs/status", (req, res) => {
     status: "online", 
     message: "API is running",
     environment: process.env.NODE_ENV,
-    proxyConfigured: !!process.env.PROXY_URL
+    proxyConfigured: !!process.env.PROXY_HOST && !!process.env.PROXY_PORT
   });
 });
 
@@ -147,5 +161,9 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`[INFO] Server running on port ${PORT}`);
   console.log(`[INFO] Environment: ${process.env.NODE_ENV}`);
-  console.log(`[INFO] Proxy configured: ${!!process.env.PROXY_URL}`);
+  console.log(`[INFO] Proxy configured: ${!!process.env.PROXY_HOST && !!process.env.PROXY_PORT}`);
+  if (process.env.PROXY_HOST && process.env.PROXY_PORT) {
+    console.log(`[INFO] Proxy host: ${process.env.PROXY_HOST}`);
+    console.log(`[INFO] Proxy port: ${process.env.PROXY_PORT}`);
+  }
 });

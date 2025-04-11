@@ -13,10 +13,12 @@ class LinkedInAuthManager {
     emailPort,
     captchaApiKey
   ) {
-    // Usando variáveis de ambiente para as credenciais do proxy
-    const proxyUrl = process.env.PROXY_URL;
+    // Usando variáveis de ambiente para as credenciais do proxy rotativo
+    const proxyHost = process.env.PROXY_HOST;
+    const proxyPort = process.env.PROXY_PORT;
     const username = process.env.PROXY_USERNAME;
     const password = process.env.PROXY_PASSWORD;
+    const proxyUrl = `http://${proxyHost}:${proxyPort}`;
 
     try {
       console.log("[INFO] Testing proxy with LinkedIn login page...");
