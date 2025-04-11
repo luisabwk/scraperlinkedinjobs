@@ -102,6 +102,7 @@ router.get("/status", (req, res) => {
     environment: process.env.NODE_ENV || "development",
     browserStatus: browserStatus,
     proxyConfigured: !!process.env.PROXY_HOST && !!process.env.PROXY_PORT,
+    captchaConfigured: !!process.env.TWOCAPTCHA_API_KEY,
     timestamp: new Date().toISOString()
   });
 });
@@ -109,6 +110,9 @@ router.get("/status", (req, res) => {
 // Auth endpoint
 router.post("/auth", ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
+  
+  // Usar API key do .env se não for fornecida na requisição
+  const apiKey = captchaApiKey || process.env.TWOCAPTCHA_API_KEY;
   
   // Validação básica
   if (!linkedinUsername || !linkedinPassword) {
@@ -118,12 +122,18 @@ router.post("/auth", ensureBrowser, async (req, res) => {
     });
   }
   
+  if (!apiKey) {
+    console.warn('[WARN] No 2Captcha API key provided. Challenges may not be solved automatically.');
+  } else {
+    console.log('[INFO] 2Captcha API key provided. Will attempt to solve any challenges automatically.');
+  }
+  
   try {
     console.log(`[INFO] Starting authentication process for user: ${linkedinUsername.substring(0, 3)}...`);
     
     const authManager = new LinkedInAuthManager();
     const li_at = await authManager.loginWithVerificationAndCaptcha(
-      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey
+      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, apiKey
     );
     
     console.log(`[SUCCESS] Authentication successful for user: ${linkedinUsername.substring(0, 3)}...`);
@@ -134,9 +144,22 @@ router.post("/auth", ensureBrowser, async (req, res) => {
     });
   } catch (error) {
     console.error("[ERROR] Authentication failed:", error.message);
-    res.status(500).json({ 
+    
+    // Analisar o erro para fornecer uma resposta mais informativa
+    let errorDetails = error.message;
+    let statusCode = 500;
+    
+    if (error.message.includes("security challenge") || error.message.includes("checkpoint")) {
+      errorDetails = "LinkedIn is requiring a security verification. Please try again with a valid 2Captcha API key.";
+      statusCode = 403; // Forbidden - indica que é necessária uma verificação adicional
+    } else if (error.message.includes("Could not find login form fields")) {
+      errorDetails = "Could not access LinkedIn login page correctly. This may be due to IP restrictions or proxy issues.";
+      statusCode = 502; // Bad Gateway - indica um problema de conectividade
+    }
+    
+    res.status(statusCode).json({ 
       error: "Authentication failed", 
-      details: error.message,
+      details: errorDetails,
       timestamp: new Date().toISOString()
     });
   }
@@ -286,4 +309,5 @@ app.listen(PORT, '0.0.0.0', () => { // Listen em todas as interfaces de rede
     console.log(`[INFO] Proxy host: ${process.env.PROXY_HOST}`);
     console.log(`[INFO] Proxy port: ${process.env.PROXY_PORT}`);
   }
+  console.log(`[INFO] 2Captcha API key configured: ${!!process.env.TWOCAPTCHA_API_KEY}`);
 });

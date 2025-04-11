@@ -192,44 +192,68 @@ class LinkedInAuthManager {
         }
       }
       
-      // Se encontramos um CAPTCHA e temos uma API key, tentar resolver
+      // Verificar se estamos em uma página de checkpoint do LinkedIn
+      const isCheckpointPage = page.url().includes("checkpoint/challenge");
+      if (isCheckpointPage) {
+        console.log("[INFO] Detected LinkedIn security checkpoint page");
+        foundChallenge = true;
+        challengeType = "LinkedIn checkpoint";
+        await page.screenshot({ path: "linkedin_checkpoint.png" });
+      }
+      
+      // Se encontramos um desafio e temos uma API key, tentar resolver
       if (foundChallenge && captchaApiKey) {
-        console.log(`[INFO] Attempting to solve ${challengeType} using 2Captcha API`);
+        console.log(`[INFO] Attempting to solve ${challengeType || "security challenge"} using 2Captcha API`);
         
         let solved = false;
         
         // Tente resolver o reCAPTCHA se detectado
         if (challengeType && (challengeType.includes("reCAPTCHA") || challengeType.includes("CAPTCHA"))) {
-          solved = await this.solveRecaptcha(page, captchaApiKey);
+          solved = await this.solveRecaptchaV2WithNewAPI(page, captchaApiKey);
         }
         
-        // Verificar checkpoint de segurança específico do LinkedIn
-        const isCheckpointPage = page.url().includes("checkpoint/challenge");
-        if (isCheckpointPage) {
-          console.log("[INFO] Detected LinkedIn security checkpoint page");
-          
-          // Verificar se tem um botão de "verify" ou similar para clicar
-          const verifyButtonSelectors = [
-            'button[data-control-name="submit"]',
-            'button[type="submit"]',
-            'button.artdeco-button--primary'
-          ];
-          
-          for (const buttonSelector of verifyButtonSelectors) {
-            const verifyButton = await page.$(buttonSelector);
-            if (verifyButton) {
-              console.log(`[INFO] Found verify button with selector: ${buttonSelector}`);
-              await verifyButton.click();
-              await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {});
-              break;
+        // Se for um checkpoint do LinkedIn, tentar identificar e resolver o desafio específico
+        if (isCheckpointPage && !solved) {
+          // Tentar verificar se existe reCAPTCHA no checkpoint
+          const hasRecaptcha = await page.$("iframe[src*='recaptcha']") !== null;
+          if (hasRecaptcha) {
+            console.log("[INFO] Found reCAPTCHA in LinkedIn checkpoint");
+            solved = await this.solveRecaptchaV2WithNewAPI(page, captchaApiKey);
+          } else {
+            // Tentar identificar outros tipos de desafios
+            const pageContent = await page.content();
+            if (pageContent.includes("captcha") || pageContent.includes("CAPTCHA")) {
+              console.log("[INFO] Found captcha reference in page content");
+              solved = await this.solveRecaptchaV2WithNewAPI(page, captchaApiKey);
             }
           }
           
-          // Esperar um pouco para ver se conseguimos passar pelo checkpoint
-          await new Promise(r => setTimeout(r, 5000));
+          // Verificar se tem um botão de "verify" ou similar para clicar
+          if (!solved) {
+            const verifyButtonSelectors = [
+              'button[data-control-name="submit"]',
+              'button[type="submit"]',
+              'button.artdeco-button--primary'
+            ];
+            
+            for (const buttonSelector of verifyButtonSelectors) {
+              const verifyButton = await page.$(buttonSelector);
+              if (verifyButton) {
+                console.log(`[INFO] Found verify button with selector: ${buttonSelector}`);
+                await verifyButton.click();
+                await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }).catch(() => {});
+                
+                // Verificar se saímos da página de checkpoint
+                if (!page.url().includes("checkpoint/challenge")) {
+                  solved = true;
+                  break;
+                }
+              }
+            }
+          }
         }
         
-        if (!solved && isCheckpointPage) {
+        if (!solved && foundChallenge) {
           console.warn("[WARN] Could not automatically solve the security challenge");
           await page.screenshot({ path: "challenge_unsolved.png" });
           throw new Error(`LinkedIn security challenge detected but could not be solved automatically. Manual verification required.`);
@@ -331,26 +355,19 @@ class LinkedInAuthManager {
     }
   }
   
-  // Método para resolver reCAPTCHA usando a API do 2Captcha
-  async solveRecaptcha(page, apiKey) {
+  // Método atualizado para resolver reCAPTCHA usando a nova API do 2Captcha
+  async solveRecaptchaV2WithNewAPI(page, apiKey) {
     try {
-      console.log("[INFO] Starting reCAPTCHA solving process with 2Captcha");
-      
-      // Verificar se existe um iframe do reCAPTCHA
-      const recaptchaIframe = await page.$("iframe[src*='recaptcha']");
-      if (!recaptchaIframe) {
-        console.warn("[WARN] No reCAPTCHA iframe found on the page");
-        return false;
-      }
+      console.log("[INFO] Starting reCAPTCHA solving process with 2Captcha API v2");
       
       // Obter o sitekey do reCAPTCHA
       const sitekey = await page.evaluate(() => {
         // Tentar encontrar o sitekey nos atributos data do iframe
-        const iframe = document.querySelector("iframe[src*='recaptcha']");
-        if (iframe) {
-          const src = iframe.getAttribute("src");
+        const iframes = Array.from(document.querySelectorAll("iframe[src*='recaptcha']"));
+        for (const iframe of iframes) {
+          const src = iframe.getAttribute("src") || "";
           const sitekeyMatch = src.match(/[?&]k=([^&]+)/);
-          return sitekeyMatch ? sitekeyMatch[1] : null;
+          if (sitekeyMatch) return sitekeyMatch[1];
         }
         
         // Tentar encontrar nos atributos data da div
@@ -359,8 +376,20 @@ class LinkedInAuthManager {
       });
       
       if (!sitekey) {
-        console.warn("[WARN] Could not extract reCAPTCHA sitekey");
-        return false;
+        console.warn("[WARN] Could not extract reCAPTCHA sitekey, attempting to find it in the page content");
+        
+        // Tentar um método alternativo para encontrar o sitekey
+        const pageContent = await page.content();
+        const sitekeyRegex = /['"](6L[a-zA-Z0-9_-]{38})['"]/;
+        const match = pageContent.match(sitekeyRegex);
+        
+        if (match && match[1]) {
+          console.log(`[INFO] Found potential sitekey using regex: ${match[1]}`);
+          sitekey = match[1];
+        } else {
+          console.error("[ERROR] Could not extract reCAPTCHA sitekey");
+          return false;
+        }
       }
       
       console.log(`[INFO] Found reCAPTCHA sitekey: ${sitekey}`);
@@ -368,38 +397,69 @@ class LinkedInAuthManager {
       // Obter a URL atual para o domínio
       const pageUrl = page.url();
       
-      // Enviar solicitação para o 2Captcha
-      console.log("[INFO] Sending reCAPTCHA solving request to 2Captcha");
-      const captchaResponse = await fetch(`https://2captcha.com/in.php?key=${apiKey}&method=userrecaptcha&googlekey=${sitekey}&pageurl=${encodeURIComponent(pageUrl)}&json=1`);
-      const captchaData = await captchaResponse.json();
+      // Preparar os dados para a API do 2captcha usando o novo formato
+      const createTaskData = {
+        clientKey: apiKey,
+        task: {
+          type: "RecaptchaV2TaskProxyless",
+          websiteURL: pageUrl,
+          websiteKey: sitekey
+        }
+      };
       
-      if (!captchaData.status || captchaData.status !== 1) {
-        console.error(`[ERROR] 2Captcha error: ${captchaData.error}`);
+      // 1. Criar a tarefa com o método createTask
+      console.log("[INFO] Creating reCAPTCHA task with 2Captcha API");
+      const createTaskResponse = await fetch("https://api.2captcha.com/createTask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(createTaskData)
+      });
+      
+      const createTaskResult = await createTaskResponse.json();
+      console.log(`[INFO] Create task response: ${JSON.stringify(createTaskResult)}`);
+      
+      if (createTaskResult.errorId !== 0) {
+        console.error(`[ERROR] 2Captcha API error: ${createTaskResult.errorDescription}`);
         return false;
       }
       
-      const captchaId = captchaData.request;
-      console.log(`[INFO] reCAPTCHA task submitted, ID: ${captchaId}`);
+      const taskId = createTaskResult.taskId;
+      console.log(`[INFO] Task created with ID: ${taskId}`);
       
-      // Esperar pela solução (polling)
+      // 2. Esperar pela solução através do método getTaskResult
       let solution = null;
       let attempts = 0;
       const maxAttempts = 30; // 30 tentativas com 5 segundos entre = até 2.5 minutos de espera
+      
+      const getTaskResultData = {
+        clientKey: apiKey,
+        taskId: taskId
+      };
       
       while (!solution && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 5000)); // Esperar 5 segundos entre tentativas
         attempts++;
         
         console.log(`[INFO] Checking reCAPTCHA solution (attempt ${attempts}/${maxAttempts})...`);
-        const resultResponse = await fetch(`https://2captcha.com/res.php?key=${apiKey}&action=get&id=${captchaId}&json=1`);
-        const resultData = await resultResponse.json();
+        const resultResponse = await fetch("https://api.2captcha.com/getTaskResult", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(getTaskResultData)
+        });
         
-        if (resultData.status === 1) {
-          solution = resultData.request;
+        const resultData = await resultResponse.json();
+        console.log(`[INFO] Task result response: ${JSON.stringify(resultData)}`);
+        
+        if (resultData.errorId !== 0) {
+          console.error(`[ERROR] 2Captcha get task result error: ${resultData.errorDescription}`);
+          // Se for um erro permanente, abortar
+          if (resultData.errorId !== 1) return false;
+          continue;
+        }
+        
+        if (resultData.status === "ready") {
+          solution = resultData.solution.gRecaptchaResponse;
           break;
-        } else if (resultData.request !== "CAPCHA_NOT_READY") {
-          console.error(`[ERROR] 2Captcha error: ${resultData.request}`);
-          return false;
         }
       }
       
@@ -412,53 +472,77 @@ class LinkedInAuthManager {
       
       // Aplicar a solução do reCAPTCHA na página
       const success = await page.evaluate((recaptchaSolution) => {
-        // Verificar se existe a função de callback do reCAPTCHA
-        if (typeof window.___grecaptcha_cfg !== 'undefined') {
-          window.___grecaptcha_cfg.clients[0].Y.Y.callback(recaptchaSolution);
-          return true;
+        // Estratégia 1: Definir diretamente no objeto grecaptcha
+        if (typeof window.grecaptcha !== 'undefined' && window.grecaptcha.enterprise === undefined) {
+          try {
+            for (const [widgetId, _] of Object.entries(window.___grecaptcha_cfg.clients[0].Y.Y)) {
+              if (!isNaN(widgetId)) {
+                window.grecaptcha.getResponse = () => recaptchaSolution;
+                window.grecaptcha.enterprise = undefined;
+                return true;
+              }
+            }
+          } catch (e) {
+            console.error("Error in strategy 1:", e);
+          }
         }
         
-        // Tentar inserir diretamente num campo textarea do reCAPTCHA
-        const textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
-        if (textarea) {
-          textarea.value = recaptchaSolution;
-          return true;
+        // Estratégia 2: Injetar o token na textarea
+        try {
+          const textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
+          if (textareas.length > 0) {
+            for (const textarea of textareas) {
+              textarea.value = recaptchaSolution;
+            }
+            return true;
+          }
+        } catch (e) {
+          console.error("Error in strategy 2:", e);
+        }
+        
+        // Estratégia 3: Usar o objeto ___grecaptcha_cfg
+        try {
+          if (typeof window.___grecaptcha_cfg !== 'undefined') {
+            // Tentar encontrar e executar callbacks
+            const callbacks = Object.entries(window.___grecaptcha_cfg.clients)
+              .flatMap(([_, client]) => {
+                return Object.entries(client).flatMap(([_, value]) => {
+                  return Object.entries(value).filter(([key]) => key === 'callback')
+                    .map(([_, callback]) => callback);
+                });
+              })
+              .filter(callback => typeof callback === 'function');
+            
+            if (callbacks.length > 0) {
+              for (const callback of callbacks) {
+                try { 
+                  callback(recaptchaSolution); 
+                  return true;
+                } catch (e) {
+                  console.error("Error executing callback:", e);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error in strategy 3:", e);
         }
         
         return false;
       }, solution);
       
       if (!success) {
-        console.warn("[WARN] Could not apply reCAPTCHA solution directly");
+        console.warn("[WARN] Could not apply reCAPTCHA solution directly, trying alternative methods");
         
-        // Tentar injetar o código que define g-recaptcha-response
+        // Método alternativo: injetar o script diretamente
         await page.evaluate((recaptchaSolution) => {
-          // Criar um elemento de script para injetar o código
-          const script = document.createElement('script');
-          script.textContent = `
-            document.querySelector('textarea#g-recaptcha-response') ? 
-              document.querySelector('textarea#g-recaptcha-response').value = "${recaptchaSolution}" : 
-              document.querySelector('textarea[name="g-recaptcha-response"]').value = "${recaptchaSolution}";
-            
-            // Tentar chamar o callback manualmente se existir
-            if (window.___grecaptcha_cfg) {
-              const callbacks = Object.keys(window.___grecaptcha_cfg.clients)
-                .map(key => Object.values(window.___grecaptcha_cfg.clients[key])[1])
-                .filter(Boolean)
-                .map(token => Object.values(token)[0])
-                .filter(Boolean)
-                .map(v => Object.entries(v))
-                .flat()
-                .filter(([k]) => k === 'callback')
-                .map(([_, v]) => v)
-                .filter(Boolean);
-              
-              callbacks.forEach(cb => {
-                try { cb("${recaptchaSolution}"); } catch(e) { console.error(e); }
-              });
-            }
-          `;
-          document.body.appendChild(script);
+          document.querySelector('textarea#g-recaptcha-response') ? 
+            document.querySelector('textarea#g-recaptcha-response').innerHTML = recaptchaSolution : 
+            document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach(elem => elem.innerHTML = recaptchaSolution);
+          
+          // Tentar disparar evento de mudança
+          const event = new Event('change', { bubbles: true });
+          document.querySelector('textarea[name="g-recaptcha-response"]')?.dispatchEvent(event);
         }, solution);
       }
       
@@ -468,7 +552,9 @@ class LinkedInAuthManager {
         'button[type="submit"]',
         'button.artdeco-button--primary',
         'button[data-control-name="submit"]',
-        '.recaptcha-submit'
+        '.recaptcha-submit',
+        'button[aria-label*="verify"]',
+        'input[type="submit"]'
       ];
       
       for (const buttonSelector of verifyButtonSelectors) {
