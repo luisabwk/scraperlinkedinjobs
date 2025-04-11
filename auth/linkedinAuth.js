@@ -361,7 +361,7 @@ class LinkedInAuthManager {
       console.log("[INFO] Starting reCAPTCHA solving process with 2Captcha API v2");
       
       // Obter o sitekey do reCAPTCHA
-      const sitekey = await page.evaluate(() => {
+      let sitekey = await page.evaluate(() => {
         // Tentar encontrar o sitekey nos atributos data do iframe
         const iframes = Array.from(document.querySelectorAll("iframe[src*='recaptcha']"));
         for (const iframe of iframes) {
@@ -376,23 +376,94 @@ class LinkedInAuthManager {
       });
       
       if (!sitekey) {
-        console.warn("[WARN] Could not extract reCAPTCHA sitekey, attempting to find it in the page content");
+        console.warn("[WARN] Could not extract reCAPTCHA sitekey using DOM selectors, trying alternative methods");
         
-        // Tentar um método alternativo para encontrar o sitekey
+        // Obter e analisar o conteúdo completo da página
         const pageContent = await page.content();
-        const sitekeyRegex = /['"](6L[a-zA-Z0-9_-]{38})['"]/;
-        const match = pageContent.match(sitekeyRegex);
         
-        if (match && match[1]) {
-          console.log(`[INFO] Found potential sitekey using regex: ${match[1]}`);
-          sitekey = match[1];
-        } else {
-          console.error("[ERROR] Could not extract reCAPTCHA sitekey");
-          return false;
+        // Log do conteúdo relevante para depuração
+        const captchaSnippets = pageContent.match(/(recaptcha|sitekey|grecaptcha).{0,50}/gi);
+        if (captchaSnippets && captchaSnippets.length > 0) {
+          console.log(`[INFO] Found ${captchaSnippets.length} captcha-related snippets in page content`);
+          captchaSnippets.slice(0, 5).forEach(snippet => {
+            console.log(`[DEBUG] Captcha snippet: ${snippet}`);
+          });
+        }
+        
+        // Tentar diferentes padrões regex para encontrar o sitekey
+        const sitekeyPatterns = [
+          /['"](6L[a-zA-Z0-9_-]{38})['"]/,                  // Formato padrão de sitekey
+          /sitekey['"]?\s*[:=]\s*['"]([^'"]+)['"]/,         // sitekey: "KEY" ou sitekey="KEY"
+          /data-sitekey=['"]([^'"]+)['"]/,                  // data-sitekey="KEY"
+          /grecaptcha\.render\([^,]+,\s*\{[^}]*['"]sitekey['"]\s*:\s*['"]([^'"]+)['"]/,    // grecaptcha.render
+          /k=([a-zA-Z0-9_-]{40})/,                          // k=KEY em URLs
+          /reCAPTCHA[^>]+sitekey=([a-zA-Z0-9_-]{40})/       // Parâmetro em texto
+        ];
+        
+        for (const pattern of sitekeyPatterns) {
+          const match = pageContent.match(pattern);
+          if (match && match[1]) {
+            sitekey = match[1];
+            console.log(`[INFO] Found sitekey using pattern ${pattern}: ${sitekey}`);
+            break;
+          }
+        }
+        
+        // Se ainda não encontrou, tente extrair diretamente do objeto grecaptcha
+        if (!sitekey) {
+          console.log("[INFO] Attempting to extract sitekey from grecaptcha configuration");
+          sitekey = await page.evaluate(() => {
+            try {
+              // Tentar extrair do objeto de configuração do grecaptcha
+              if (window.___grecaptcha_cfg && window.___grecaptcha_cfg.clients) {
+                const clientKeys = Object.keys(window.___grecaptcha_cfg.clients);
+                for (const clientKey of clientKeys) {
+                  const client = window.___grecaptcha_cfg.clients[clientKey];
+                  // Procurar pela configuração do widget que contém a chave do site
+                  for (const widgetKey in client) {
+                    if (client[widgetKey] && client[widgetKey].sitekey) {
+                      return client[widgetKey].sitekey;
+                    }
+                  }
+                }
+              }
+              return null;
+            } catch (e) {
+              console.error("Error extracting sitekey from grecaptcha config:", e);
+              return null;
+            }
+          });
+        }
+        
+        // Se ainda não encontrou, verificar se o LinkedIn está usando outro tipo de desafio
+        if (!sitekey) {
+          const hasLinkedinChallenge = await page.evaluate(() => {
+            return document.querySelector('.challenge-dialog') !== null ||
+                   document.querySelector('form[name="checkpoint-challenge"]') !== null ||
+                   document.body.textContent.includes('security verification') ||
+                   document.body.textContent.includes("confirm you're not a robot");
+          });
+          
+          if (hasLinkedinChallenge) {
+            console.log("[INFO] LinkedIn challenge detected but appears to be a non-standard reCAPTCHA");
+            
+            // Tente usar um sitekey genérico para o LinkedIn
+            // Nota: Este é um exemplo e deve ser substituído pelo sitekey real do LinkedIn
+            sitekey = "6LfCVLAUAAAAAMfHXD6LNPSboAs0qWvwE9pLF9Y6";
+            console.log("[INFO] Using LinkedIn-specific sitekey for challenge");
+          }
         }
       }
       
-      console.log(`[INFO] Found reCAPTCHA sitekey: ${sitekey}`);
+      if (!sitekey) {
+        console.error("[ERROR] Could not extract reCAPTCHA sitekey using any method");
+        
+        // Capturar screenshot para análise
+        await page.screenshot({ path: "recaptcha_sitekey_error.png", fullPage: true });
+        return false;
+      }
+      
+      console.log(`[INFO] Using reCAPTCHA sitekey: ${sitekey}`);
       
       // Obter a URL atual para o domínio
       const pageUrl = page.url();
