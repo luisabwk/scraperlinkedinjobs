@@ -71,3 +71,4 @@ auth.json
 .project
 .classpath
 .settings/
+.env
