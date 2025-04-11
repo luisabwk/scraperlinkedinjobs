@@ -60,7 +60,7 @@ async function ensureBrowser(req, res, next) {
 }
 
 // Status endpoint - Rota original
-app.get("/status", (req, res) => {
+app.get("/jobs/status", (req, res) => {
   res.status(200).json({ 
     status: "online", 
     message: "API is running",
@@ -80,7 +80,7 @@ app.get("/jobs/status", (req, res) => {
 });
 
 // Auth endpoint - Rota original
-app.post("/auth", ensureBrowser, async (req, res) => {
+app.post("/jobs/auth", ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
   try {
     const authManager = new LinkedInAuthManager();
@@ -110,7 +110,7 @@ app.post("/jobs/auth", ensureBrowser, async (req, res) => {
 });
 
 // Scrape jobs endpoint - Rota original
-app.post("/scrape-jobs", ensureBrowser, async (req, res) => {
+app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
   const { searchTerm, location, li_at, maxJobs } = req.body;
   try {
     const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
@@ -134,7 +134,7 @@ app.post("/jobs/scrape-jobs", ensureBrowser, async (req, res) => {
 });
 
 // Job details endpoint - Rota original
-app.post("/job-details", ensureBrowser, async (req, res) => {
+app.post("/jobs/job-details", ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
   try {
     const details = await getJobDetails(browser, jobUrl, li_at);
