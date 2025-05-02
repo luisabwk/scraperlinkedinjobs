@@ -8,8 +8,8 @@ const ProxyChain = require("proxy-chain");
 const fetch = require("node-fetch");
 const HttpsProxyAgent = require("https-proxy-agent");
 const LinkedInAuthManager = require("./auth/linkedinAuth");
-const getJobListings = require("./jobs/scrape-jobs-v2");
-const getJobDetails = require("./jobs/job-details-v2");
+const getJobListings = require("./jobs/scrape-jobs");
+const getJobDetails = require("./jobs/job-details");
 
 // Initialize Express
 const app = express();
