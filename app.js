@@ -19,6 +19,18 @@ app.use(cors());
 // Serve screenshots directory
 app.use('/screenshots', express.static(path.join(__dirname, 'screenshots')));
 
+// Explicit download route as fallback
+app.get('/screenshots/:file', (req, res) => {
+  const fileName = req.params.file;
+  const options = { root: path.join(__dirname, 'screenshots') };
+  res.sendFile(fileName, options, (err) => {
+    if (err) {
+      console.error('[ERROR] sendFile failed:', err);
+      res.status(err.status || 404).send('Arquivo não encontrado');
+    }
+  });
+});
+
 // Request logging
 app.use((req, res, next) => {
   console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
