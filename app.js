@@ -13,129 +13,129 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Proxy Configuration
+// Middleware de log para depuração
+app.use((req, res, next) => {
+  console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Configuração de timeout maior para requisições
+app.use((req, res, next) => {
+  res.setTimeout(300000); // 5 minutos
+  next();
+});
+
+// Proxy configuration
 const proxyHost = process.env.PROXY_HOST;
 const proxyPort = process.env.PROXY_PORT;
 const proxyUsername = process.env.PROXY_USERNAME;
 const proxyPassword = process.env.PROXY_PASSWORD;
-const proxyUrl = `http://${proxyUsername}:${proxyPassword}@${proxyHost}:${proxyPort}`;
 const proxyServer = `${proxyHost}:${proxyPort}`;
+const proxyUrl = `http://${proxyUsername}:${proxyPassword}@${proxyHost}:${proxyPort}`;
 const proxyAgent = new HttpsProxyAgent(proxyUrl);
 
-// Browsers
-let browserWithProxy;
-let browserWithoutProxy;
+// Single browser instance
+let browser;
 
-// Middleware to Initialize Browser with Proxy
-async function ensureBrowserWithProxy(req, res, next) {
+async function ensureBrowser(req, res, next) {
   try {
-    if (!browserWithProxy || !browserWithProxy.isConnected()) {
+    if (!browser || !browser.isConnected()) {
       console.log("[INFO] Initializing browser with proxy...");
-      browserWithProxy = await puppeteerExtra.launch({
+      browser = await puppeteerExtra.launch({
         headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--disable-web-security",
+          "--disable-features=IsolateOrigins,site-per-process",
+          "--enable-unsafe-swiftshader",
+          "--window-size=1920,1080",
           `--proxy-server=${proxyServer}`,
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--disable-notifications",
+          "--lang=pt-BR,pt",
+          "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
         ],
+        ignoreHTTPSErrors: true,
+        defaultViewport: { width: 1920, height: 1080 }
       });
-
-      // Test Proxy IP
-      const response = await fetch("https://icanhazip.com", { agent: proxyAgent });
-      const ip = await response.text();
-      console.log(`[INFO] Proxy IP in use: ${ip.trim()}`);
+      console.log("[INFO] Browser initialized successfully");
+      browser.on('disconnected', () => { console.warn('[WARN] Browser disconnected'); browser = null; });
+      // teste de IP do proxy
+      const resp = await fetch('https://icanhazip.com', { agent: proxyAgent });
+      console.log('[INFO] Proxy IP:', (await resp.text()).trim());
     }
     next();
-  } catch (error) {
-    console.error("[ERROR] Failed to initialize browser with proxy:", error);
-    res.status(500).json({ error: "Failed to initialize browser with proxy", details: error.message });
+  } catch (err) {
+    console.error('[ERROR] Failed to initialize browser:', err.message);
+    res.status(500).json({ error: 'Failed to initialize browser', details: err.message });
   }
 }
 
-// Middleware to Initialize Browser without Proxy
-async function ensureBrowserWithoutProxy(req, res, next) {
-  try {
-    if (!browserWithoutProxy || !browserWithoutProxy.isConnected()) {
-      console.log("[INFO] Initializing browser without proxy...");
-      browserWithoutProxy = await puppeteerExtra.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-          "--disable-notifications",
-        ],
-      });
-    }
-    next();
-  } catch (error) {
-    console.error("[ERROR] Failed to initialize browser without proxy:", error);
-    res.status(500).json({ error: "Failed to initialize browser without proxy", details: error.message });
-  }
-}
+// Configura rota e autenticação
+const router = express.Router();
 
-// LinkedIn Authentication Endpoint
-app.post("/auth", ensureBrowserWithProxy, async (req, res) => {
+router.get('/status', (req, res) => {
+  res.json({ status: 'online', browser: browser?.isConnected() ? 'connected' : 'not connected', timestamp: new Date().toISOString() });
+});
+
+router.post('/auth', ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
-  if (!linkedinUsername || !linkedinPassword) {
-    return res.status(400).json({ error: "LinkedIn username and password are required" });
-  }
+  if (!linkedinUsername || !linkedinPassword) return res.status(400).json({ error: 'linkedinUsername and linkedinPassword are required' });
   try {
     const authManager = new LinkedInAuthManager();
     const li_at = await authManager.loginWithVerificationAndCaptcha(
-      linkedinUsername,
-      linkedinPassword,
-      emailUsername,
-      emailPassword,
-      emailHost,
-      emailPort,
-      captchaApiKey
+      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey || process.env.TWOCAPTCHA_API_KEY
     );
-    res.status(200).json({ message: "Authentication successful", li_at });
+    res.json({ message: 'Auth successful', li_at, timestamp: new Date().toISOString() });
   } catch (err) {
-    console.error("[ERROR] Authentication failed:", err);
+    console.error('[ERROR] Auth failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Endpoint for Scraping Job Listings
-app.post("/scrape-jobs", ensureBrowserWithProxy, async (req, res) => {
-  const { searchTerm, location, li_at, maxJobs = 50 } = req.body;
-  if (!searchTerm || !location || !li_at) {
-    return res.status(400).json({ error: "searchTerm, location, and li_at are required" });
-  }
+router.post('/scrape-jobs', ensureBrowser, async (req, res) => {
+  const { searchTerm, location, li_at, maxJobs = 100 } = req.body;
+  if (!searchTerm || !location || !li_at) return res.status(400).json({ error: 'searchTerm, location, and li_at are required' });
   try {
-    const results = await getJobListings(browserWithProxy, searchTerm, location, li_at, maxJobs);
-    res.status(200).json(results);
-  } catch (error) {
-    console.error("[ERROR] Failed to scrape jobs:", error);
-    res.status(500).json({ error: error.message });
+    const results = await getJobListings(browser, searchTerm, location, li_at, maxJobs);
+    res.json({ ...results, timestamp: new Date().toISOString() });
+  } catch (err) {
+    console.error('[ERROR] scrape-jobs failed:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Endpoint for Fetching Job Details
-app.post("/job-details", ensureBrowserWithProxy, async (req, res) => {
+router.post('/job-details', ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
-  if (!jobUrl || !li_at) {
-    return res.status(400).json({ error: "jobUrl and li_at are required" });
-  }
+  if (!jobUrl || !li_at) return res.status(400).json({ error: 'jobUrl and li_at are required' });
   try {
-    const jobDetails = await getJobDetails(browserWithProxy, jobUrl, li_at);
-    res.status(200).json(jobDetails);
-  } catch (error) {
-    console.error("[ERROR] Failed to fetch job details:", error);
-    res.status(500).json({ error: error.message });
+    const details = await getJobDetails(browser, jobUrl, li_at);
+    res.json({ ...details, timestamp: new Date().toISOString() });
+  } catch (err) {
+    console.error('[ERROR] job-details failed:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Server Start
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`[INFO] Server is running on port ${PORT}`);
+router.get('/health', (req, res) => res.send('OK'));
+router.post('/reset-browser', async (req, res) => { await browser?.close(); browser = null; res.json({ message: 'Browser reset', timestamp: new Date().toISOString() }); });
+
+app.use('/', router);
+app.use('/jobs', router);
+app.use('*', (req, res) => res.status(404).json({ error: 'Route not found', path: req.originalUrl, timestamp: new Date().toISOString() }));
+
+process.on('uncaughtException', err => console.error('[CRITICAL] UncaughtException', err));
+process.on('unhandledRejection', (reason, p) => console.error('[CRITICAL] UnhandledRejection', reason));
+
+function gracefulShutdown() { console.log('[INFO] Shutdown'); browser?.close(); process.exit(); }
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[INFO] Server running on port ${PORT}`);
 });
 
 module.exports = app;
