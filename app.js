@@ -3,27 +3,19 @@ require('dotenv').config({ path: __dirname + '/.env' });
 const express = require("express");
 const cors = require("cors");
 const puppeteerExtra = require("puppeteer-extra");
-const ProxyPlugin = require("puppeteer-extra-plugin-proxy");
+const ProxyChain = require("proxy-chain");
 const fetch = require("node-fetch");
 const HttpsProxyAgent = require("https-proxy-agent");
 const LinkedInAuthManager = require("./auth/linkedinAuth");
-const getJobListings = require("./jobs/scrape-jobs");
-const getJobDetails = require("./jobs/job-details");
+const getJobListings = require("./jobs/scrape-jobs-v2");
+const getJobDetails = require("./jobs/job-details-v2");
 
-// Proxy configuration
+// Proxy configuration (IPRoyal)
 const proxyHost = process.env.PROXY_HOST;
 const proxyPort = process.env.PROXY_PORT;
 const proxyUsername = process.env.PROXY_USERNAME;
 const proxyPassword = process.env.PROXY_PASSWORD;
-const proxyAgent = new HttpsProxyAgent(`http://${proxyUsername}:${proxyPassword}@${proxyHost}:${proxyPort}`);
-
-// Register Puppeteer proxy plugin
-puppeteerExtra.use(
-  ProxyPlugin({
-    proxyUrl: `http://${proxyHost}:${proxyPort}`,
-    credentials: { username: proxyUsername, password: proxyPassword }
-  })
-);
+const originalProxyUrl = `http://${proxyUsername}:${proxyPassword}@${proxyHost}:${proxyPort}`;
 
 const app = express();
 app.use(express.json());
@@ -45,7 +37,11 @@ let browser;
 async function ensureBrowser(req, res, next) {
   try {
     if (!browser || !browser.isConnected()) {
-      console.log("[INFO] Initializing browser with proxy...");
+      console.log("[INFO] Initializing browser with IPRoyal proxy...");
+      // Create anonymous proxy URL using proxy-chain
+      const anonymizedProxyUrl = await ProxyChain.anonymizeProxy(originalProxyUrl);
+      console.log(`[INFO] Anonymized proxy URL: ${anonymizedProxyUrl}`);
+
       browser = await puppeteerExtra.launch({
         headless: true,
         args: [
@@ -53,19 +49,23 @@ async function ensureBrowser(req, res, next) {
           "--disable-setuid-sandbox",
           "--disable-dev-shm-usage",
           "--disable-gpu",
-          `--proxy-server=${proxyHost}:${proxyPort}`
+          `--proxy-server=${anonymizedProxyUrl}`
         ],
         ignoreHTTPSErrors: true,
         defaultViewport: { width: 1920, height: 1080 }
       });
+
       console.log("[INFO] Browser initialized successfully");
       browser.on('disconnected', () => { console.warn('[WARN] Browser disconnected'); browser = null; });
+
+      // Test proxy IP
+      const proxyAgent = new HttpsProxyAgent(anonymizedProxyUrl);
       const resp = await fetch('https://icanhazip.com', { agent: proxyAgent });
       console.log('[INFO] Proxy IP:', (await resp.text()).trim());
     }
     next();
   } catch (err) {
-    console.error('[ERROR] Failed to initialize browser:', err.message);
+    console.error('[ERROR] Failed to initialize browser with proxy:', err.message);
     res.status(500).json({ error: 'Failed to initialize browser', details: err.message });
   }
 }
