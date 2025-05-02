@@ -43,7 +43,18 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs = 10
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
   await page.setCookie(...cookies);
 
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    console.log('[DEBUG] Page.goto completed (domcontentloaded)');
+    try {
+      const listSelector = 'ul.jobs-search__results-list, ul.jobs-search-results__list';
+      await page.waitForSelector(listSelector, { timeout: 30000 });
+      console.log('[DEBUG] List container found with selector:', listSelector);
+    } catch (err) {
+      console.error('[ERROR] List container not found:', err.message);
+      const screenshotPath = path.join(screenshotDir, 'no_container.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log('[INFO] Screenshot saved to', screenshotPath);
+    }
   await waitForNetworkIdle(page);
 
   const results = [];
