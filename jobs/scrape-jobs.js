@@ -66,8 +66,9 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs = 10
     console.log('[INFO] Cookies set');
 
     console.log(`[INFO] Navigating to ${baseUrl}`);
-    await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-    console.log('[INFO] Page.goto completed');
+    const response = await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    console.log(`[INFO] Page.goto completed - status: ${response && response.status ? response.status() : 'no response object'}`);
+
     await waitForNetworkIdle(page, 30000);
 
     const results = [];
@@ -75,6 +76,10 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs = 10
     while (results.length < maxJobs) {
       iteration++;
       console.log(`[DEBUG] Loop iteration ${iteration}: current results ${results.length}`);
+
+      // before extract, capture count of list container elements
+      const containerExists = await page.$('ul.jobs-search__results-list');
+      console.log('[DEBUG] jobs-search__results-list exists:', Boolean(containerExists));
 
       const newJobs = await page.evaluate(() => {
         const cards = Array.from(document.querySelectorAll('ul.jobs-search__results-list li'));
@@ -86,6 +91,14 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs = 10
         }));
       });
       console.log(`[DEBUG] Extracted ${newJobs.length} jobs in iteration ${iteration}`);
+
+      if (!newJobs.length) {
+        console.warn('[WARN] No job cards found on page, possible page structure change');
+        // capture screenshot for analysis
+        const screenshotPath = path.join(screenshotDir, `error_iter${iteration}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        console.log('[INFO] Screenshot saved to', screenshotPath);
+      }
 
       for (const job of newJobs) {
         if (results.length >= maxJobs) break;
@@ -109,6 +122,12 @@ async function getJobListings(browser, searchTerm, location, li_at, maxJobs = 10
     return { totalVagas: results.length, vagas: results };
   } catch (err) {
     console.error('[ERROR] scraping error:', err);
+    // capture screenshot on failure
+    if (page) {
+      const screenshotPath = path.join(path.dirname(__dirname), 'screenshots', `error_exception.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log('[INFO] Exception screenshot saved to', screenshotPath);
+    }
     throw err;
   } finally {
     if (page) {
