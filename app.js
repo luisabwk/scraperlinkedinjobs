@@ -70,17 +70,26 @@ async function ensureBrowser(req, res, next) {
   }
 }
 
+// Router setup
 const router = express.Router();
+
 router.get('/status', (req, res) => {
   res.json({ status: 'online', browser: browser?.isConnected() ? 'connected' : 'not connected', timestamp: new Date().toISOString() });
 });
+
 router.post('/auth', ensureBrowser, async (req, res) => {
   const { linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey } = req.body;
   if (!linkedinUsername || !linkedinPassword) return res.status(400).json({ error: 'linkedinUsername and linkedinPassword are required' });
   try {
     const authManager = new LinkedInAuthManager();
     const li_at = await authManager.loginWithVerificationAndCaptcha(
-      linkedinUsername, linkedinPassword, emailUsername, emailPassword, emailHost, emailPort, captchaApiKey || process.env.TWOCAPTCHA_API_KEY
+      linkedinUsername,
+      linkedinPassword,
+      emailUsername,
+      emailPassword,
+      emailHost,
+      emailPort,
+      captchaApiKey || process.env.TWOCAPTCHA_API_KEY
     );
     res.json({ message: 'Auth successful', li_at, timestamp: new Date().toISOString() });
   } catch (err) {
@@ -88,6 +97,7 @@ router.post('/auth', ensureBrowser, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 router.post('/scrape-jobs', ensureBrowser, async (req, res) => {
   const { searchTerm, location, li_at, maxJobs = 100 } = req.body;
   if (!searchTerm || !location || !li_at) return res.status(400).json({ error: 'searchTerm, location, and li_at are required' });
@@ -99,6 +109,7 @@ router.post('/scrape-jobs', ensureBrowser, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 router.post('/job-details', ensureBrowser, async (req, res) => {
   const { jobUrl, li_at } = req.body;
   if (!jobUrl || !li_at) return res.status(400).json({ error: 'jobUrl and li_at are required' });
@@ -110,6 +121,7 @@ router.post('/job-details', ensureBrowser, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 router.get('/health', (req, res) => res.send('OK'));
 router.post('/reset-browser', async (req, res) => { await browser?.close(); browser = null; res.json({ message: 'Browser reset', timestamp: new Date().toISOString() }); });
 
@@ -117,13 +129,15 @@ app.use('/', router);
 app.use('/jobs', router);
 app.use('*', (req, res) => res.status(404).json({ error: 'Route not found', path: req.originalUrl, timestamp: new Date().toISOString() }));
 
+// Global error handlers and graceful shutdown
 process.on('uncaughtException', err => console.error('[CRITICAL] UncaughtException', err));
-process.on('unhandledRejection', (reason, p) => console.error('[CRITICAL] UnhandledRejection', reason));
+process.on('unhandledRejection', (reason) => console.error('[CRITICAL] UnhandledRejection', reason));
 
 function gracefulShutdown() { console.log('[INFO] Shutdown'); browser?.close(); process.exit(); }
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
+// Start server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[INFO] Server running on port ${PORT}`);
